@@ -42,7 +42,7 @@ Chaque couche ne fait qu'**ajouter** à la précédente. Voir [org/README.md](or
 Dans chaque projet configuré, le kit s'aligne sur les **5 couches Claude Code** :
 1. **`CLAUDE.md`** : identité, commandes, architecture et pièges (< 200 lignes, imports `@fichier` possibles).
 2. **`.claude/rules/*.md`** : règles modulaires scopées par `paths` (monorepos, `base/rules/`, `org/rules/`).
-3. **`.claude/skills/`** (et `commands/`) : workflows réutilisables à la demande (ex: `/verify` fourni dans `base/skills/verify/`).
+3. **`.claude/skills/`** (et `commands/`) : workflows réutilisables à la demande (`/verify` et `/wrap-up` fournis dans `base/skills/`).
 4. **`.claude/agents/`** : sous-agents isolés (ex: `code-reviewer` en lecture seule pour relire le diff sans biais).
 5. **Hooks (`.claude/settings.json`)** : garde-fous déterministes (`SessionStart` avec `session-check.py`, `PreToolUse` avec `guard.py`, `PostToolUse` avec `format.py`, et `Stop` opt-in avec `verify-stop.py` via `"stop_verify": true` dans `.claude/kit.json`).
 
@@ -80,11 +80,11 @@ claude-kit/
 │   ├── settings.base.json      permissions renforcées + branchement des hooks
 │   ├── hooks/                  run-hook.sh, guard.py, format.py, session-check.py, verify-stop.py
 │   ├── agents/                 code-reviewer.md (copié dans chaque projet)
-│   ├── skills/                 verify/SKILL.md (copié dans chaque projet)
+│   ├── skills/                 verify/SKILL.md, wrap-up/SKILL.md (copiés dans chaque projet)
 │   └── commands/  rules/       optionnel : copiés dans chaque projet
 ├── org/                        couche entreprise optionnelle (règles, permissions, MCP, agents, commandes, skills)
 ├── profiles/                   un dossier par stack
-│   ├── python/ csharp-dotnet/ angular/ typescript/   profils intégrés
+│   ├── python/ csharp-dotnet/ angular/ typescript/ nextjs/ docker/ rust/   profils intégrés
 │   └── _TEMPLATE/              modèle pour écrire un profil à la main
 ├── skills/
 │   ├── claude-kit/             /claude-kit (+ scripts/apply.py)
