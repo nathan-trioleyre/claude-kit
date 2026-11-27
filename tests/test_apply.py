@@ -569,14 +569,9 @@ class TestApply(unittest.TestCase):
             self.assertEqual(len(stats["harness"]["recurring"]), 1)
             self.assertEqual(stats["harness"]["recurring"][0]["count"], 4)
 
-    def test_apply_syncs_spec_and_debug_skills_and_precommit_supports_gitleaks(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            kit, apply_bin, proj = self._kit_and_project(tmp)
-            run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python")
-            self.assertTrue((proj / ".claude" / "skills" / "spec" / "SKILL.md").is_file())
-            self.assertTrue((proj / ".claude" / "skills" / "debug" / "SKILL.md").is_file())
-            pre_commit = (kit / "base" / "presets" / "pre-commit.template").read_text(encoding="utf-8")
-            self.assertIn("gitleaks", pre_commit)
+    def test_precommit_template_supports_gitleaks(self):
+        pre_commit = (KIT / "base" / "presets" / "pre-commit.template").read_text(encoding="utf-8")
+        self.assertIn("gitleaks", pre_commit)
 
 
 if __name__ == "__main__":

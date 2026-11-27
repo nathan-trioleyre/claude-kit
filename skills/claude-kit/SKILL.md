@@ -134,7 +134,7 @@ Provide a brief summary:
 - any new profile saved to the kit (ready to commit in the kit repo: `git -C KIT status`);
 - any `CLAUDE.md` sections still marked `_To be completed._`;
 - a reminder: restart the Claude Code session so hooks are loaded, and verify with `/hooks`;
-- mention `/spec`, `/debug`, `/review`, `/commit`, and `/handoff` (plus `.claude/codemap.md` and `APPLY stats --project .`);
+- mention `/review`, `/commit`, and `/handoff` (plus `.claude/codemap.md` and `APPLY stats --project .`);
 - if the project's `CLAUDE.md` has a filled "Lessons Learned" section, mention `/claude-kit-learn` to promote durable lessons into the kit.
 
 ## Rules
