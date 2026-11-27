@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """PreToolUse hook: blocks destructive actions BEFORE they execute.
+# claude-kit-hook-version: 2
 
 Claude Code passes JSON on stdin (tool name + tool parameters).
 Exiting with code 2 blocks the action and sends stderr back to Claude.
@@ -26,6 +27,16 @@ PROTECTED_WIN_DIRS = {
     "windows", "users", "program files", "program files (x86)", "programdata", "system32",
 }
 WIN_DELETE_CMDS = {"remove-item", "ri", "rd", "rmdir", "del", "erase"}
+# Shells that take an inline script: the script is inspected recursively.
+SHELLS = {"bash", "sh", "zsh", "dash", "ksh", "pwsh", "powershell", "cmd"}
+SHELL_INLINE_FLAGS = {"-c", "-command", "/c", "-encodedcommand"}
+# Commands that read/copy/send a file: forbidden on secret files.
+READER_CMDS = {
+    "cat", "type", "less", "more", "head", "tail", "bat", "nl", "tac", "xxd", "strings",
+    "get-content", "gc", "select-string", "sls", "grep", "rg", "egrep", "fgrep", "sed", "awk",
+    "cp", "copy", "mv", "move", "scp", "base64", "openssl", "source", ".",
+}
+MAX_SHELL_DEPTH = 3
 
 
 def block(message: str) -> None:
@@ -88,7 +99,7 @@ def _check_rm_segment(tokens: list) -> str | None:
                 recursive = True
             continue
         targets.append(tok)
-    if recursive and any(_is_dangerous_rm_target(t) for t in targets):
+    if recursive and any(_is_dangerous_rm_target(t) or _is_dangerous_win_target(t, True) for t in targets):
         return "recursive rm on a dangerous path (root, system dir, home, parent, '.', '*')."
     return None
 
@@ -127,7 +138,49 @@ def _check_win_delete_segment(tokens: list) -> str | None:
     return None
 
 
-def check_bash_command(command: str) -> str | None:
+def _cmd_name(token: str) -> str:
+    name = Path(token.replace("\\", "/")).name.lower()
+    return name[:-4] if name.endswith(".exe") else name
+
+
+def _inline_script(tokens: list) -> str | None:
+    """For `bash -c "..."` / `pwsh -Command "..."` return the inline script, else None."""
+    if not tokens or _cmd_name(tokens[0]) not in SHELLS:
+        return None
+    for idx, tok in enumerate(tokens[1:], start=1):
+        low = tok.lower()
+        if low in SHELL_INLINE_FLAGS and idx + 1 < len(tokens):
+            return " ".join(tokens[idx + 1:])
+        if low.startswith("-") and not low.startswith("--") and "c" in low[1:] and len(low) <= 4 and idx + 1 < len(tokens):
+            return " ".join(tokens[idx + 1:])  # combined flags such as -lc
+    return None
+
+
+def _check_secret_access(tokens: list, segment: str) -> str | None:
+    if tokens and _cmd_name(tokens[0]) in READER_CMDS:
+        for tok in tokens[1:]:
+            if not tok.startswith("-") and is_protected_file(tok.strip("\"'")):
+                return f"reading/copying a protected file ({tok}). Use the provider's environment variables instead."
+    for target in re.findall(r">>?\s*[\"']?([^\s\"'|;&]+)", segment):
+        if is_protected_file(target):
+            return f"redirecting output into a protected file ({target})."
+    return None
+
+
+def _check_git_and_find(segment: str, tokens: list) -> str | None:
+    if re.search(r"\bgit\s+branch\b[^|;&]*\s-D\b", segment):
+        return "git branch -D deletes a branch irrecoverably. Ask for confirmation."
+    if re.search(r"\bgit\s+push\b[^|;&]*(?:--delete\b|\s:\S+)", segment):
+        return "git push deleting a remote branch/tag. Ask for confirmation."
+    if re.search(r"\bgit\s+(?:checkout\s+--\s|restore\s+(?!--staged))", segment):
+        return "discarding working-tree changes (git checkout -- / git restore). Ask for confirmation."
+    if tokens and _cmd_name(tokens[0]) == "find" and any(t in {"-delete", "-exec", "-execdir", "-ok"} for t in tokens):
+        if "-delete" in tokens or any(t in {"rm", "rmdir", "del"} for t in tokens):
+            return "find ... -delete / -exec rm deletes files in bulk. Ask for confirmation."
+    return None
+
+
+def check_bash_command(command: str, _depth: int = 0) -> str | None:
     """Return a block reason if command matches a destructive pattern, else None."""
     if re.search(r"\b(?:curl|wget)\b[^|;&]*\|\s*(?:sudo\s+)?(?:ba|z)?sh\b", command):
         return "executing a downloaded script (curl | sh)."
@@ -151,6 +204,15 @@ def check_bash_command(command: str) -> str | None:
                 return "git push with '+' force refspec. Ask the user for explicit confirmation."
 
         posix_tokens = _tokenize(seg, posix=True)
+        if _depth < MAX_SHELL_DEPTH:
+            inline = _inline_script(posix_tokens)
+            if inline:
+                nested = check_bash_command(inline, _depth + 1)
+                if nested:
+                    return nested
+        extra = _check_secret_access(posix_tokens, seg) or _check_git_and_find(seg, posix_tokens)
+        if extra:
+            return extra
         rm_reason = _check_rm_segment(posix_tokens)
         if rm_reason:
             return rm_reason
