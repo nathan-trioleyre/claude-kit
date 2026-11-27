@@ -1,17 +1,17 @@
-# org/ — optional company-wide layer
+# org/ — couche entreprise optionnelle
 
-Everything here is applied to **every** project configured with the kit, between `base/` and the stack profiles.
-It is additive: it can add rules, permissions and files, never remove what `base/` or the project already has.
-Delete the files you do not need; an empty `org/` does nothing.
+Tout ce qui est ici s'applique à **chaque** projet configuré avec le kit, entre `base/` et les profils de stack.
+La couche est additive : elle peut ajouter des règles, des permissions et des fichiers, jamais retirer ce que `base/` ou le projet ont déjà.
+Supprime les fichiers dont tu n'as pas besoin ; un `org/` vide ne fait rien.
 
-| File / folder | Effect in the project |
+| Fichier / dossier | Effet dans le projet |
 |---|---|
-| `rules.md` | Appended to the "Mandatory Rules" section of `CLAUDE.md` (plain markdown bullet lines). |
-| `settings.json` | Extra `permissions.allow` / `permissions.deny` and `hooks`, merged into `.claude/settings.json`. Same shape as `base/settings.base.json`. |
-| `mcp.json` | `{"mcpServers": {...}}`, merged into the project's `.mcp.json`. Existing server names are never overwritten. Never put secrets here: use `${ENV_VAR}` references. |
-| `agents/*.md` | Copied to `.claude/agents/` (sub-agents), without overwriting. |
-| `commands/*.md` | Copied to `.claude/commands/` (slash commands), without overwriting. |
+| `rules.md` | Ajouté à la section « Mandatory Rules » de `CLAUDE.md` (lignes à puces markdown simples). |
+| `settings.json` | `permissions.allow` / `permissions.deny` et `hooks` supplémentaires, fusionnés dans `.claude/settings.json`. Même structure que `base/settings.base.json`. |
+| `mcp.json` | `{"mcpServers": {...}}`, fusionné dans le `.mcp.json` du projet. Les noms de serveurs existants ne sont jamais écrasés. N'y mets jamais de secrets : utilise des références `${ENV_VAR}`. |
+| `agents/*.md` | Copiés dans `.claude/agents/` (sous-agents), sans écraser. |
+| `commands/*.md` | Copiées dans `.claude/commands/` (commandes slash), sans écraser. |
 
-`base/agents/` and `base/commands/` work the same way for things that belong to every project, whoever the company is.
+`base/agents/` et `base/commands/` fonctionnent de la même façon pour ce qui appartient à tous les projets, quelle que soit l'entreprise.
 
-Apply to projects with `/claude-kit` (first time) or `/claude-kit sync` (afterwards). Skip the layer with `--no-org`.
+Applique-les aux projets avec `/claude-kit` (première fois) ou `/claude-kit sync` (ensuite). Ignore la couche avec `--no-org`.

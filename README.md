@@ -1,122 +1,122 @@
 # claude-kit
 
-A personal kit that prepares Claude Code for any project (Python, C#, Angular, and any future stack) with a single command: `/claude-kit`.
+Un kit personnel qui prépare Claude Code pour n'importe quel projet (Python, C#, Angular, et toute future stack) avec une seule commande : `/claude-kit`.
 
-## The Idea in 30 Seconds
+## L'idée en 30 secondes
 
-When you land on a project, `/claude-kit`:
+Quand tu arrives sur un projet, `/claude-kit` :
 
-1. **inspects** the project to understand its stack;
-2. **checks** `profiles/` to see if this stack is already known;
-   - yes → it reuses the profile without re-researching;
-   - no → it checks official documentation, validates and shows you the proposed profile, and **saves it to this repository after your approval**;
-3. **generates** a `CLAUDE.md` (plus optional path-scoped `.claude/rules/<stack>.md`), permissions, and hooks (safety + formatting) in the project without ever overwriting what already exists.
+1. **inspecte** le projet pour comprendre sa stack ;
+2. **vérifie** dans `profiles/` si cette stack est déjà connue ;
+   - oui → il réutilise le profil sans refaire de recherche ;
+   - non → il consulte la documentation officielle, valide et te montre le profil proposé, puis **l'enregistre dans ce dépôt après ton accord** ;
+3. **génère** dans le projet un `CLAUDE.md` (plus des `.claude/rules/<stack>.md` optionnels limités à certains chemins), des permissions et des hooks (sécurité + formatage), sans jamais écraser ce qui existe déjà.
 
-Afterwards, the kit keeps projects in line with it:
+Ensuite, le kit garde les projets alignés sur lui :
 
-| Command | What it does |
+| Commande | Ce qu'elle fait |
 |---|---|
-| `/claude-kit` | first setup (or full re-run) of a project |
-| `/claude-kit doctor` | reports drift: outdated hooks, missing permissions, stale profiles, new stacks, `CLAUDE.md` gaps, unresolved tooling conflicts |
-| `/claude-kit sync` | refreshes only the kit-managed files (settings, hooks, agents/commands, `.mcp.json`); never touches `CLAUDE.md` |
-| `/claude-kit-refresh [stack\|all]` | re-reads a profile's official sources and proposes updates |
-| `/claude-kit-learn` | promotes durable lessons from a project's `CLAUDE.md` into the kit (profile, `org/`, or `base/`) |
+| `/claude-kit` | première configuration (ou nouvelle passe complète) d'un projet |
+| `/claude-kit doctor` | signale les écarts : hooks périmés, permissions manquantes, profils obsolètes, nouvelles stacks, trous dans `CLAUDE.md`, conflits d'outillage non résolus |
+| `/claude-kit sync` | rafraîchit uniquement les fichiers gérés par le kit (settings, hooks, agents/commandes, `.mcp.json`) ; ne touche jamais à `CLAUDE.md` |
+| `/claude-kit-refresh [stack\|all]` | relit les sources officielles d'un profil et propose des mises à jour |
+| `/claude-kit-learn` | fait remonter les leçons durables du `CLAUDE.md` d'un projet vers le kit (profil, `org/` ou `base/`) |
 
-## Projects That Already Have Their Own Setup
+## Projets qui ont déjà leur propre configuration
 
-On a project with its own `CLAUDE.md`, hooks, formatter, linter or package manager, `/claude-kit` never overrides anything silently:
+Sur un projet qui a son propre `CLAUDE.md`, ses hooks, son formateur, son linter ou son gestionnaire de paquets, `/claude-kit` n'écrase jamais rien en silence :
 
-1. `apply.py audit` inventories what exists and lists **conflicts** between the project's tools and the profile's (e.g. `black` in `pyproject.toml` vs the kit's `ruff`, `pnpm-lock.yaml` vs `npm`, a hand-made formatter hook).
-2. For each conflict you choose, one at a time: **keep the existing tool** (the kit withholds its overlapping commands, permissions, formatting rule and practice lines, and uses the existing tool's equivalents), **adopt the kit's** (Claude proposes a migration plan: old config and hooks to remove, one-time reformat; nothing is touched before you approve it) or **keep both**.
-3. The answer is stored in `.claude/kit.json` (`decisions`), so `sync` and `doctor` respect it. `doctor` flags undecided conflicts and half-finished migrations; `apply.py decide` changes a decision later.
-4. Until you decide, the kit behaves as if you had chosen to keep the existing tool.
-5. An existing `CLAUDE.md` is compared section by section (only in the kit / only yours / different) before anything is merged.
+1. `apply.py audit` fait l'inventaire de l'existant et liste les **conflits** entre les outils du projet et ceux du profil (par exemple `black` dans `pyproject.toml` face au `ruff` du kit, `pnpm-lock.yaml` face à `npm`, un hook de formatage fait main).
+2. Pour chaque conflit, tu choisis, un par un : **garder l'outil existant** (le kit retient ses commandes, permissions, règle de formatage et lignes de conventions qui font doublon, et utilise les équivalents de l'outil existant), **adopter celui du kit** (Claude propose un plan de migration : ancienne config et hooks à supprimer, reformatage unique ; rien n'est touché avant ton accord) ou **garder les deux**.
+3. La réponse est enregistrée dans `.claude/kit.json` (`decisions`), donc `sync` et `doctor` la respectent. `doctor` signale les conflits non tranchés et les migrations à moitié faites ; `apply.py decide` change une décision plus tard.
+4. Tant que tu n'as pas décidé, le kit se comporte comme si tu avais choisi de garder l'outil existant.
+5. Un `CLAUDE.md` existant est comparé section par section (seulement dans le kit / seulement chez toi / différent) avant toute fusion.
 
-Conflict detection comes from the optional `tooling` section of each profile (see [profiles/README.md](profiles/README.md)).
+La détection des conflits vient de la section optionnelle `tooling` de chaque profil (voir [profiles/README.md](profiles/README.md)).
 
-## Layers
+## Les couches
 
-`base/` (every project) → `org/` (optional, your company) → `profiles/<stack>/` (per stack) → the project itself.
-Each layer only **adds** to the previous one. See [org/README.md](org/README.md) for the company layer (shared rules, permissions, MCP servers, agents, commands).
+`base/` (tous les projets) → `org/` (optionnel, ton entreprise) → `profiles/<stack>/` (par stack) → le projet lui-même.
+Chaque couche ne fait qu'**ajouter** à la précédente. Voir [org/README.md](org/README.md) pour la couche entreprise (règles partagées, permissions, serveurs MCP, agents, commandes).
 
-## Who Does What
+## Qui fait quoi
 
-| The script (`apply.py`) | Claude (via skills) |
+| Le script (`apply.py`) | Claude (via les skills) |
 |---|---|
-| Detects known stacks (up to depth 5, pruning `node_modules`/`.venv`/etc.) | Understands the project |
-| Copies hooks; upgrades them only if the project's copy is unmodified (hashes in `.claude/kit.json`) | Creates/refreshes profiles from official docs |
-| Merges `settings.json` without removing custom user rules | Writes project architecture, gotchas, and monorepo `rule_paths` |
-| Generates `CLAUDE.md` & `.claude/rules/*.md` (without overwriting) | Shows diffs and asks for confirmation |
-| `audit` / `decide` / `doctor` / `sync` / `validate` | Explains issues, asks you to settle each conflict, proposes and carries out the approved migration |
+| Détecte les stacks connues (jusqu'à la profondeur 5, en ignorant `node_modules`, `.venv`, etc.) | Comprend le projet |
+| Copie les hooks ; ne les met à jour que si la copie du projet n'a pas été modifiée (hashes dans `.claude/kit.json`) | Crée et rafraîchit les profils à partir de la doc officielle |
+| Fusionne `settings.json` sans retirer les règles personnalisées | Écrit l'architecture du projet, les pièges et les `rule_paths` des monorepos |
+| Génère `CLAUDE.md` et `.claude/rules/*.md` (sans écraser) | Montre les diffs et demande confirmation |
+| `audit` / `decide` / `doctor` / `sync` / `validate` | Explique les problèmes, te fait trancher chaque conflit, propose et exécute la migration approuvée |
 
-Core rule: **what must be identical every time is code; what requires understanding is delegated to Claude.**
+Règle de base : **ce qui doit être identique à chaque fois est du code ; ce qui demande de la compréhension est délégué à Claude.**
 
-## Installation (once per machine)
+## Installation (une fois par machine)
 
 ```bash
 git clone https://github.com/nathan-trioleyre/claude-kit.git
 cd claude-kit
-python install.py --link     # skills are linked: edits to this repo are live
+python install.py --link     # les skills sont liés : les modifications de ce dépôt sont prises en compte en direct
 ```
 
-`--link` uses a symlink (junction on Windows). Without it, skills are copied and `python install.py` must be re-run after editing a `SKILL.md`.
-Then, in any project: open Claude Code and type `/claude-kit`.
+`--link` utilise un lien symbolique (une jonction sous Windows). Sans lui, les skills sont copiés et il faut relancer `python install.py` après avoir modifié un `SKILL.md`.
+Ensuite, dans n'importe quel projet : ouvre Claude Code et tape `/claude-kit`.
 
-## Repository Contents
+## Contenu du dépôt
 
 ```
 claude-kit/
-├── VERSION                     kit version (recorded in each project's kit.json)
-├── install.py                  installs skills (copy or --link) + saves kit & Python paths
-├── base/                       shared across ALL projects
-│   ├── CLAUDE.md.template      skeleton for CLAUDE.md
-│   ├── settings.base.json      hardened permissions + hook wiring
-│   ├── hooks/                  run-hook.sh (launcher), guard.py (safety), format.py (formatters)
-│   ├── agents/  commands/      optional: copied into every project
-├── org/                        optional company layer (rules, permissions, MCP, agents, commands)
-├── profiles/                   one folder per stack
-│   ├── python/ csharp-dotnet/ angular/   starter profiles
-│   └── _TEMPLATE/              template for writing a profile manually
+├── VERSION                     version du kit (enregistrée dans le kit.json de chaque projet)
+├── install.py                  installe les skills (copie ou --link) + enregistre les chemins du kit et de Python
+├── base/                       commun à TOUS les projets
+│   ├── CLAUDE.md.template      squelette du CLAUDE.md
+│   ├── settings.base.json      permissions renforcées + branchement des hooks
+│   ├── hooks/                  run-hook.sh (lanceur), guard.py (sécurité), format.py (formateurs)
+│   ├── agents/  commands/      optionnel : copiés dans chaque projet
+├── org/                        couche entreprise optionnelle (règles, permissions, MCP, agents, commandes)
+├── profiles/                   un dossier par stack
+│   ├── python/ csharp-dotnet/ angular/   profils de départ
+│   └── _TEMPLATE/              modèle pour écrire un profil à la main
 ├── skills/
 │   ├── claude-kit/             /claude-kit (+ scripts/apply.py)
 │   ├── claude-kit-refresh/     /claude-kit-refresh
 │   └── claude-kit-learn/       /claude-kit-learn
-└── tests/                      zero-dependency unittest suite
+└── tests/                      suite unittest sans dépendance
 ```
 
-### Starter profiles are unverified on purpose
+### Les profils de départ ne sont volontairement pas vérifiés
 
-`python`, `csharp-dotnet` and `angular` were written from general knowledge, not checked against their sources yet.
-Their `last_verified` is deliberately old, so the kit reports them as stale. Run `/claude-kit-refresh all` once: it re-reads the official sources, shows you the changes, and stamps the verification date after your approval.
+`python`, `csharp-dotnet` et `angular` ont été écrits à partir de connaissances générales, sans vérification auprès de leurs sources.
+Leur `last_verified` est volontairement ancien, donc le kit les signale comme obsolètes. Lance `/claude-kit-refresh all` une fois : il relit les sources officielles, te montre les changements et inscrit la date de vérification après ton accord.
 
-## What the Script Never Does
+## Ce que le script ne fait jamais
 
-- overwrite an existing `CLAUDE.md` or `.claude/rules/<stack>.md` (writes `.proposed` alongside it, and prints unified diffs on `--dry-run`). If you customized a file and the kit's output has not changed since the last run, it stays silent instead of re-proposing;
-- remove a custom permission or hook (additive merge; only upgrades kit-managed hook commands/matchers);
-- overwrite a hook you modified locally (only `sync --force-hooks` does, explicitly);
-- write anything when `--dry-run` is passed.
+- écraser un `CLAUDE.md` ou un `.claude/rules/<stack>.md` existant (il écrit un `.proposed` à côté, et affiche des diffs unifiés avec `--dry-run`). Si tu as personnalisé un fichier et que la sortie du kit n'a pas changé depuis la dernière exécution, il reste silencieux au lieu de reproposer ;
+- retirer une permission ou un hook personnalisé (fusion additive ; il ne met à jour que les commandes et matchers de hooks gérés par le kit) ;
+- écraser un hook que tu as modifié localement (seul `sync --force-hooks` le fait, explicitement) ;
+- écrire quoi que ce soit quand `--dry-run` est passé.
 
-## Safety Model
+## Modèle de sécurité
 
-- `settings.json` `deny` rules block secret reads, `sudo`, `rm -rf`, force pushes and `reset --hard`.
-- `guard.py` (PreToolUse hook) adds: nested shells (`bash -c "…"`, `pwsh -Command "…"`), reading/copying/redirecting into secret files via Bash, `find -delete`, `git branch -D`, remote branch deletion, discarding working-tree changes, `curl | sh`, DROP statements, and dangerous Windows deletions.
-- `apply.py validate` rejects profile permissions that allow arbitrary code execution (`python *`, `bash *`, `npx *`, `find *`, `curl *`…) or start with a wildcard.
-- `guard.py` is still a **safety net against accidents**, not a security boundary: strict isolation lives in `deny` rules and an isolated environment.
+- Les règles `deny` de `settings.json` bloquent la lecture des secrets, `sudo`, `rm -rf`, les force push et `reset --hard`.
+- `guard.py` (hook PreToolUse) ajoute : les shells imbriqués (`bash -c "…"`, `pwsh -Command "…"`), la lecture, la copie ou la redirection vers des fichiers secrets via Bash, `find -delete`, `git branch -D`, la suppression de branche distante, l'abandon des modifications de l'arbre de travail, `curl | sh`, les instructions DROP et les suppressions dangereuses sous Windows.
+- `apply.py validate` rejette les permissions de profil qui autorisent l'exécution de code arbitraire (`python *`, `bash *`, `npx *`, `find *`, `curl *`…) ou qui commencent par un joker.
+- `guard.py` reste un **filet de sécurité contre les accidents**, pas une frontière de sécurité : l'isolation stricte relève des règles `deny` et d'un environnement isolé.
 
-## Why Not a Claude Code Plugin?
+## Pourquoi pas un plugin Claude Code ?
 
-Profiles are *written back* to this repository (and refreshed there). A plugin is installed into a cache that is replaced on update, so it cannot be the source of truth for data you edit. The kit keeps the repository as the source of truth and removes the drawbacks of copying with `--link`, hook hashes, `sync` and `doctor`. If you later want to distribute only the read-only part (hooks and skills) to teammates, wrapping it as a plugin remains possible.
+Les profils sont *réécrits* dans ce dépôt (et rafraîchis là). Un plugin s'installe dans un cache remplacé à chaque mise à jour : il ne peut donc pas être la source de vérité de données que tu modifies. Le kit garde le dépôt comme source de vérité et supprime les inconvénients de la copie grâce à `--link`, aux hashes des hooks, à `sync` et à `doctor`. Si tu veux plus tard distribuer à des collègues seulement la partie en lecture seule (hooks et skills), l'emballer en plugin reste possible.
 
-## Evolving the Kit
+## Faire évoluer le kit
 
-- A rule useful across all your projects → `base/`; across your company → `org/`; specific to a stack → its profile.
-- Validate profiles → `python skills/claude-kit/scripts/apply.py validate`.
-- Run the test suite → `python -m unittest discover -s tests -v`.
-- Bump `VERSION` when you change `base/` so `doctor` flags projects that need a `sync`; bump the `claude-kit-hook-version` marker in a hook when you change it.
-- Commit changes in `profiles/` and `org/`: they are your stack and company memory.
+- Une règle utile dans tous tes projets → `base/` ; dans toute ton entreprise → `org/` ; propre à une stack → son profil.
+- Valider les profils → `python skills/claude-kit/scripts/apply.py validate`.
+- Lancer les tests → `python -m unittest discover -s tests -v`.
+- Incrémente `VERSION` quand tu modifies `base/`, pour que `doctor` signale les projets à resynchroniser ; incrémente le marqueur `claude-kit-hook-version` d'un hook quand tu le modifies.
+- Commite les changements dans `profiles/` et `org/` : ils sont la mémoire de tes stacks et de ton entreprise.
 
-## Things to Verify on First Run
+## À vérifier au premier lancement
 
-1. **Skills appear**: in Claude Code, type `/` and look for `claude-kit`. Otherwise, check `~/.claude/skills/`.
-2. **Hooks run across platforms**: hooks invoke `.claude/hooks/run-hook.sh`, which searches `PATH` for a working `python3`/`python` (skipping broken Windows Store stubs), falls back to the interpreter saved in `~/.claude/claude-kit.json`, and finally tries `py -3`. Type `/hooks` to verify registration, then ask Claude to run `git push --force`: it should be blocked.
-3. **Hooks are loaded at startup**: after running `/claude-kit`, restart the session.
+1. **Les skills apparaissent** : dans Claude Code, tape `/` et cherche `claude-kit`. Sinon, vérifie `~/.claude/skills/`.
+2. **Les hooks fonctionnent sur toutes les plateformes** : les hooks appellent `.claude/hooks/run-hook.sh`, qui cherche dans le `PATH` un `python3`/`python` fonctionnel (en ignorant les faux exécutables du Windows Store), se rabat sur l'interpréteur enregistré dans `~/.claude/claude-kit.json`, puis essaie `py -3`. Tape `/hooks` pour vérifier l'enregistrement, puis demande à Claude de lancer `git push --force` : il doit être bloqué.
+3. **Les hooks sont chargés au démarrage** : après avoir lancé `/claude-kit`, redémarre la session.
