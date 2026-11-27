@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """SessionStart hook: injects a concise one-line status if the project has pending kit actions.
-# claude-kit-hook-version: 1
+# claude-kit-hook-version: 2
 
 Fast and read-only: never modifies files, never blocks (always exits 0).
 """
@@ -22,8 +22,9 @@ def main() -> None:
         return
 
     notes = []
-    if (project / "CLAUDE.md.proposed").is_file():
-        notes.append("CLAUDE.md.proposed pending merge")
+    for name in ("CLAUDE.md.proposed", "CLAUDE.local.md.proposed"):
+        if (project / name).is_file():
+            notes.append(f"{name} pending merge")
     rules_dir = project / ".claude" / "rules"
     if rules_dir.is_dir() and any(rules_dir.glob("*.proposed")):
         notes.append(".claude/rules/*.proposed pending merge")
