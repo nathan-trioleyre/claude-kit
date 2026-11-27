@@ -115,7 +115,9 @@ class TestHookLauncher(unittest.TestCase):
             # 3. No Python anywhere: guard.py fails closed (exit 2), format.py fails open (exit 0)
             empty_home = t / "empty-home"
             empty_home.mkdir()
-            broken_env = {"PATH": "/usr/bin:/bin", "HOME": empty_home.as_posix(), "CLAUDE_PROJECT_DIR": proj.as_posix()}
+            empty_bin = t / "empty-bin"
+            empty_bin.mkdir()
+            broken_env = {"PATH": empty_bin.as_posix(), "HOME": empty_home.as_posix(), "CLAUDE_PROJECT_DIR": proj.as_posix()}
             r_guard_fail = subprocess.run(
                 [sh_bin, "-c", pre_cmd],
                 input="{}", env=broken_env, capture_output=True, text=True,
