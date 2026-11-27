@@ -40,6 +40,7 @@ from pathlib import Path
 STALE_DAYS = 90
 MAX_DETECT_DEPTH = 5
 MAX_PRACTICES_LINES = 15
+MAX_VERSION_PRACTICES_LINES = 8
 IGNORED_DIRS = {
     "node_modules", ".git", ".venv", "venv", "bin", "obj",
     "dist", "__pycache__", ".claude", "target", ".next",
@@ -273,6 +274,15 @@ def validate_profile_folder(folder: Path) -> list:
             errors.append(f"{folder.name}: practices.md is empty")
         elif len(non_empty_lines) > MAX_PRACTICES_LINES:
             errors.append(f"{folder.name}: practices.md has {len(non_empty_lines)} lines (max {MAX_PRACTICES_LINES})")
+
+    versions_dir = folder / "versions"
+    if versions_dir.is_dir():
+        for vf in sorted(versions_dir.glob("*.md")):
+            vlines = [line for line in vf.read_text(encoding="utf-8").splitlines() if line.strip()]
+            if not vlines:
+                errors.append(f"{folder.name}: versions/{vf.name} is empty")
+            elif len(vlines) > MAX_VERSION_PRACTICES_LINES:
+                errors.append(f"{folder.name}: versions/{vf.name} has {len(vlines)} lines (max {MAX_VERSION_PRACTICES_LINES})")
 
     return errors
 
@@ -552,7 +562,9 @@ def effective_profile(profile: dict, analysis: list) -> dict:
     eff["permissions_allow"] = [r for r in eff.get("permissions_allow", []) if r not in withheld]
 
     commands, practices = eff["commands"], eff.get("_practices", "")
-    for a in kept:
+    # Process package-manager first so kept formatter/linter rules take precedence over its defaults.
+    ordered_kept = sorted(kept, key=lambda a: 0 if a["concern"] == "package-manager" else 1)
+    for a in ordered_kept:
         item = items[a["concern"]]
         kit = item["kit"]
         alt = next(x for x in item["alternatives"] if x["name"] == a["existing"][0]["name"])
@@ -747,29 +759,57 @@ def resolve_rule_paths(profile: dict, ctx: dict) -> list:
     return profile.get("paths") or []
 
 
+def resolve_version_practices(stack: str, version: str | None) -> str:
+    """Return version-specific practices from profiles/<stack>/versions/<ver>.md, if present."""
+    if not version:
+        return ""
+    ver = str(version).strip().lstrip("vV")
+    vdir = PROFILES / stack / "versions"
+    if not vdir.is_dir():
+        return ""
+    candidates = [ver, ver.split(".", 1)[0]]
+    for cand in dict.fromkeys(c for c in candidates if c):
+        vf = vdir / f"{cand}.md"
+        if vf.is_file():
+            return vf.read_text(encoding="utf-8").strip()
+    return ""
+
+
+def combined_practices(profile: dict, version: str | None = None) -> str:
+    base = profile.get("_practices", "").strip()
+    ver_text = resolve_version_practices(profile["stack"], version)
+    if base and ver_text:
+        return f"{base}\n{ver_text}"
+    return base or ver_text
+
+
 def render_practices(profiles: list, ctx: dict) -> str:
+    versions = ctx.get("stack_versions") or {}
     if len(profiles) == 1:
         p = profiles[0]
-        if resolve_rule_paths(p, ctx) and p["_practices"]:
+        text = combined_practices(p, versions.get(p["stack"]))
+        if resolve_rule_paths(p, ctx) and text:
             return f"See `.claude/rules/{p['stack']}.md`."
-        return p["_practices"] or PLACEHOLDER
+        return text or PLACEHOLDER
 
     blocks = []
     for p in profiles:
-        if not p["_practices"]:
+        text = combined_practices(p, versions.get(p["stack"]))
+        if not text:
             continue
         name = p.get("display_name", p["stack"])
         if resolve_rule_paths(p, ctx):
             blocks.append(f"### {name}\nSee `.claude/rules/{p['stack']}.md`.")
         else:
-            blocks.append(f"### {name}\n{p['_practices']}")
+            blocks.append(f"### {name}\n{text}")
     return "\n\n".join(blocks) or PLACEHOLDER
 
 
-def render_rule_file(profile: dict, paths: list) -> str:
+def render_rule_file(profile: dict, paths: list, version: str | None = None) -> str:
     path_lines = "\n".join(f'  - "{pat}"' for pat in paths)
     title = profile.get("display_name", profile["stack"])
-    return f"---\npaths:\n{path_lines}\n---\n\n# {title} Conventions\n\n{profile['_practices']}\n"
+    text = combined_practices(profile, version)
+    return f"---\npaths:\n{path_lines}\n---\n\n# {title} Conventions\n\n{text}\n"
 
 
 def write_text(path: Path, content: str, dry: bool) -> None:
@@ -885,8 +925,13 @@ def sync_file(src: Path, dest: Path, label: str, managed: dict, dry: bool, repor
         report.append(f"skipped   {label} differs from the kit and was modified locally (use --force-hooks to overwrite)")
 
 
-def sync_extras(project: Path, managed: dict, dry: bool, report: list, force: bool, use_org: bool) -> None:
-    """Hooks, then optional agents/commands/rules/skills from base/ and org/ (non-destructive)."""
+def sync_extras(project: Path, managed: dict, dry: bool, report: list, force: bool, use_org: bool,
+                local: bool = False) -> bool:
+    """Hooks, then optional agents/commands/rules/skills from base/ and org/ (non-destructive).
+
+    Returns True if .mcp.json was created by org/mcp.json during this run.
+    """
+    mcp_created = False
     for src in sorted((BASE / "hooks").iterdir()):
         if src.is_file() and not src.name.startswith("."):
             sync_file(src, project / ".claude" / "hooks" / src.name, f".claude/hooks/{src.name}",
@@ -914,13 +959,17 @@ def sync_extras(project: Path, managed: dict, dry: bool, report: list, force: bo
     if mcp_src and mcp_src.is_file():
         wanted = json.loads(mcp_src.read_text(encoding="utf-8")).get("mcpServers", {})
         target = project / ".mcp.json"
+        if local and target.exists():
+            report.append("skipped   .mcp.json preserved (local mode)")
+            return False
+        existed = target.exists()
         existing = {}
-        if target.exists():
+        if existed:
             try:
                 existing = json.loads(target.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
                 report.append("skipped   .mcp.json is not valid JSON (left untouched)")
-                return
+                return False
         servers = existing.setdefault("mcpServers", {})
         added = [name for name in wanted if name not in servers]
         for name in added:
@@ -928,8 +977,10 @@ def sync_extras(project: Path, managed: dict, dry: bool, report: list, force: bo
         if added:
             write_text(target, json.dumps(existing, indent=2, ensure_ascii=False) + "\n", dry)
             report.append(f"merged    .mcp.json (+{', '.join(added)})")
+            mcp_created = not existed
         else:
             report.append("unchanged .mcp.json")
+    return mcp_created
 
 
 def apply_settings(project: Path, profiles: list, dry: bool, report: list, use_org: bool,
@@ -982,9 +1033,12 @@ def update_gitignore(project: Path, dry: bool, report: list) -> None:
         report.append(f"updated   .gitignore (+{len(missing)} lines)")
 
 
-def resolve_verify_command(profiles: list, effective: dict, overrides: dict, previous: dict, ctx: dict) -> str:
+def resolve_verify_command(profiles: list, effective: dict, overrides: dict, previous: dict, ctx: dict,
+                           *, full: bool = True) -> str:
     if ctx.get("verify_command"):
         return str(ctx["verify_command"]).strip()
+    if not full and previous.get("verify_command") and not overrides:
+        return str(previous["verify_command"]).strip()
     cmds = []
     for name in list(dict.fromkeys([p["stack"] for p in profiles] + list(previous.get("profiles", {})))):
         ov = overrides.get(name, {})
@@ -998,17 +1052,22 @@ def resolve_verify_command(profiles: list, effective: dict, overrides: dict, pre
 
 def write_kit_json(project: Path, profiles: list, previous: dict, managed: dict, rendered: dict,
                    decisions: dict, effective: dict, dry: bool, report: list, ctx: dict | None = None,
-                   local: bool = False) -> None:
+                   local: bool = False, *, full: bool = True) -> None:
     ctx = ctx or {}
     known = dict(previous.get("profiles", {}))
+    versions = ctx.get("stack_versions") or {}
     for p in profiles:
-        known[p["stack"]] = {"last_verified": p["last_verified"]}
+        entry = {"last_verified": p["last_verified"]}
+        ver = versions.get(p["stack"]) or (known.get(p["stack"], {}) or {}).get("version")
+        if ver:
+            entry["version"] = str(ver).strip().lstrip("vV")
+        known[p["stack"]] = entry
     format_rules = []
     for name in list(known):
         if name in effective:  # profiles deleted from the kit in the meantime are skipped
             format_rules.extend(effective[name].get("format_rules", []))
     stop_verify = bool(ctx["stop_verify"]) if "stop_verify" in ctx else bool(previous.get("stop_verify", False))
-    verify_cmd = resolve_verify_command(profiles, effective, ctx.get("commands_override", {}), previous, ctx)
+    verify_cmd = resolve_verify_command(profiles, effective, ctx.get("commands_override", {}), previous, ctx, full=full)
     kit_json = {
         "generated_by": "claude-kit",
         "kit_version": KIT_VERSION,
@@ -1027,7 +1086,7 @@ def write_kit_json(project: Path, profiles: list, previous: dict, managed: dict,
 
 
 # ------------------------------------------------------------------ run modes
-def render_local_delta(values: dict, has_gotchas: bool) -> str:
+def render_local_delta(values: dict, has_gotchas: bool, template: str) -> str:
     """Render a minimal CLAUDE.local.md when a team CLAUDE.md already exists."""
     parts = [
         f"# {values['PROJECT_NAME']} (Local Notes)",
@@ -1038,13 +1097,10 @@ def render_local_delta(values: dict, has_gotchas: bool) -> str:
         parts.extend(["", "## Conventions", values["PRACTICES"]])
     if has_gotchas:
         parts.extend(["", "## Known Gotchas", values["GOTCHAS"]])
+    mandatory = split_sections(template).get("Mandatory Rules", "").replace("{{ORG_RULES}}", values["ORG_RULES"])
+    if mandatory:
+        parts.extend(["", "## Mandatory Rules", mandatory])
     parts.extend([
-        "",
-        "## Mandatory Rules",
-        "- Never write to a `.env` file or commit secrets.",
-        "- Never force-push or bulk-delete files without explicit confirmation.",
-        "- Run the verification command before declaring a task complete.",
-        "- If a rule in this file contradicts the existing code, flag it instead of guessing." + values["ORG_RULES"],
         "",
         "## Lessons Learned",
         "<!-- Add 1 to 3 lines here per non-obvious gotcha discovered (observation / why / rule). -->",
@@ -1082,24 +1138,36 @@ def run(project: Path, profile_names: list, ctx: dict, dry: bool, *, full: bool,
             report.append(f"! profile '{p['stack']}' is stale or unverified ({age_days(p)}d): consider /claude-kit-refresh {p['stack']}")
 
     rule_labels = []
+    effective_versions = {
+        name: info["version"]
+        for name, info in previous.get("profiles", {}).items()
+        if isinstance(info, dict) and info.get("version")
+    }
+    effective_versions.update({k: v for k, v in (ctx.get("stack_versions") or {}).items() if v})
     if full:
         # 1. CLAUDE.md or CLAUDE.local.md (never overwritten)
         template = (BASE / "CLAUDE.md.template").read_text(encoding="utf-8")
         org_rules = read_org_text("rules.md") if use_org else ""
+        render_ctx = {**ctx, "stack_versions": effective_versions}
+        stack_lines = []
+        for p in profiles:
+            ver = effective_versions.get(p["stack"])
+            ver_suffix = f" (v{str(ver).strip().lstrip('vV')})" if ver else ""
+            stack_lines.append(f"- {p.get('display_name', p['stack'])}{ver_suffix}")
         values = {
             "PROJECT_NAME": ctx.get("name") or project.name,
             "DESCRIPTION": ctx.get("description") or PLACEHOLDER,
-            "STACK": "\n".join(f"- {p.get('display_name', p['stack'])}" for p in profiles) or PLACEHOLDER,
+            "STACK": "\n".join(stack_lines) or PLACEHOLDER,
             "COMMANDS": render_commands(profiles, ctx.get("commands_override", {})),
             "ARCHITECTURE": ctx.get("architecture") or PLACEHOLDER,
-            "PRACTICES": render_practices(profiles, ctx),
+            "PRACTICES": render_practices(profiles, render_ctx),
             "GOTCHAS": ctx.get("gotchas") or PLACEHOLDER,
             "ORG_RULES": ("\n" + org_rules) if org_rules else "",
             "DATE": date.today().isoformat(),
             "PROFILES": ", ".join(p["stack"] for p in profiles) or "none",
         }
         if is_local and (project / "CLAUDE.md").is_file():
-            rendered = render_local_delta(values, bool(ctx.get("gotchas")))
+            rendered = render_local_delta(values, bool(ctx.get("gotchas")), template)
         else:
             rendered = template
             for key, value in values.items():
@@ -1111,20 +1179,22 @@ def run(project: Path, profile_names: list, ctx: dict, dry: bool, *, full: bool,
         # 2. Modular .claude/rules/<stack>.md (optional, never overwritten)
         for p in profiles:
             rule_paths = resolve_rule_paths(p, ctx)
-            if rule_paths and p["_practices"]:
+            ver = effective_versions.get(p["stack"])
+            if rule_paths and combined_practices(p, ver):
                 label = f".claude/rules/{p['stack']}.md"
                 rule_labels.append(label)
-                write_non_destructive(project / label, label, render_rule_file(p, rule_paths),
+                write_non_destructive(project / label, label, render_rule_file(p, rule_paths, ver),
                                       dry, report, state=rendered_state)
 
     # 3. settings.json or settings.local.json (additive merge + legacy kit hook upgrade)
     apply_settings(project, profiles, dry, report, use_org, local=is_local)
 
     # 4. hooks, agents, commands, rules, skills, MCP servers
-    sync_extras(project, managed, dry, report, force_hooks, use_org)
+    mcp_created = sync_extras(project, managed, dry, report, force_hooks, use_org, local=is_local)
 
     # 5. kit.json (metadata, formatting rules, hashes)
-    write_kit_json(project, profiles, previous, managed, rendered_state, decisions, effective, dry, report, ctx, local=is_local)
+    write_kit_json(project, profiles, previous, managed, rendered_state, decisions, effective, dry, report, ctx,
+                   local=is_local, full=full)
 
     # 6. .gitignore (shared mode) or .git/info/exclude (local mode)
     if is_local:
@@ -1133,6 +1203,8 @@ def run(project: Path, profile_names: list, ctx: dict, dry: bool, *, full: bool,
             ".claude/settings.local.json", ".claude/kit.json", ".claude/rules/*.proposed",
             *sorted(managed), *rule_labels,
         ]
+        if mcp_created:
+            exclude_paths.append(".mcp.json")
         update_git_exclude(project, exclude_paths, dry, report)
     else:
         update_gitignore(project, dry, report)
@@ -1147,7 +1219,8 @@ def cmd_apply(args) -> None:
     project = Path(args.project).resolve()
     ctx = load_context(args.context)
     emit(run(project, args.profiles, ctx, args.dry_run, full=True,
-             force_hooks=args.force_hooks, use_org=not args.no_org, local=args.local), args.dry_run)
+             force_hooks=args.force_hooks, use_org=not args.no_org,
+             local=True if args.local else None), args.dry_run)
 
 
 def cmd_sync(args) -> None:
