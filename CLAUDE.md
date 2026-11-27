@@ -10,7 +10,7 @@ Personal kit that configures Claude Code in any project (`/claude-kit`). See [RE
 - **Conventional Commits**: `type(scope): subject` in English, imperative, no trailing period.
   Types: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`, `ci`. Scopes used here: `hooks`, `apply`, `install`, `profiles`, `skills`, `org`.
 - One logical change per commit; keep tests green at the tip of each branch.
-- Never commit directly to the default branch: work on a branch (`feat/...`, `fix/...`).
+- Commit directly on `main` (personal repo, no branch/PR workflow). Do not push unless asked.
 
 ## Rules
 - Changing `base/` → bump `VERSION`; changing a hook → bump its `claude-kit-hook-version` marker.
