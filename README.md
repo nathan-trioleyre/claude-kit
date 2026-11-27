@@ -43,9 +43,9 @@ Each layer only **adds** to the previous one. See [org/README.md](org/README.md)
 In each configured project, the kit aligns with the **5 Claude Code layers**:
 1. **`CLAUDE.md` & `MEMORY.md`**: `CLAUDE.md` for invariants, commands, architecture, and gotchas (≤ 80 lines, 40–60 sweet spot; `@file` imports supported), plus `MEMORY.md` as a lightweight inter-session state index (≤ 150 lines).
 2. **`.claude/rules/*.md`**: modular rules scoped by `paths` (monorepos, `base/rules/`, `org/rules/`).
-3. **`.claude/skills/`** (and `commands/`): optional on-demand workflows from `base/` (`/commit`, `/handoff`, `/review`) or `org/`.
-4. **`.claude/agents/`**: optional isolated subagents from `base/` (`code-reviewer`) or `org/`.
-5. **Hooks (`.claude/settings.json`) & Observability**: deterministic guardrails (`SessionStart` with `session-check.py` including `~/.npmrc` supply-chain checks, `PreToolUse` with `guard.py`, `PostToolUse` with `format.py` running both `format_rules` and fast `lint_rules`, and `Stop` with `verify-stop.py` active by default whenever `verify_command` is set — opt-out via `"stop_verify": false` in `.claude/kit.json`). Hook blocks are logged to `.claude/logs/harness.log` and audited by `/claude-kit doctor` and `/claude-kit-learn`.
+3. **`.claude/skills/`** (and `commands/`): optional on-demand workflows from `base/` (`/spec`, `/debug`, `/review`, `/commit`, `/handoff`) or `org/`.
+4. **`.claude/agents/` & `.claude/codemap.md`**: isolated subagents from `base/` (`code-reviewer`) or `org/`, plus a compact auto-generated project codemap to save exploration tokens.
+5. **Hooks (`.claude/settings.json`) & Observability**: deterministic guardrails (`SessionStart` with `session-check.py` including `~/.npmrc` supply-chain checks, `PreToolUse` with `guard.py`, `PostToolUse` with `format.py` running `lint_rules` then `format_rules`, and `Stop` with `verify-stop.py` active by default whenever `verify_command` is set — opt-out via `"stop_verify": false` in `.claude/kit.json`). Hook blocks and session token/cost usage are logged to `.claude/logs/` and summarized via `apply.py stats` (and `doctor` / `/claude-kit-learn`). Also optional `.github/workflows/ci.yml` (`--base-preset ci`) and `.githooks/pre-commit` (with `gitleaks` if installed).
 
 ## Division of labor
 

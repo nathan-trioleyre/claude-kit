@@ -111,6 +111,7 @@ Skip this step completely in `local` mode (`--local` must never modify repo-wide
    - If **skip**: record `"<concern>": "skip"` in Step 3 `decisions` so its commands, hooks, and `verify` steps are withheld cleanly.
 2. If root `.editorconfig` is missing, offer `APPLY scaffold-tooling --project . --base-preset editorconfig`.
 3. If no git hook setup (`.husky/`, `.pre-commit-config.yaml`, `lefthook.yml`, `.githooks/`) exists, offer `APPLY scaffold-tooling --project . --base-preset pre-commit` and, if approved, activate it locally with `git config core.hooksPath .githooks`.
+4. If `.github/workflows/` has no CI workflow, offer `APPLY scaffold-tooling --project . --base-preset ci` to generate `.github/workflows/ci.yml` from the active profiles.
 
 Complete Step 3c **before** Step 4 so `apply.py apply` detects the newly scaffolded markers in one pass.
 
@@ -133,7 +134,7 @@ Provide a brief summary:
 - any new profile saved to the kit (ready to commit in the kit repo: `git -C KIT status`);
 - any `CLAUDE.md` sections still marked `_To be completed._`;
 - a reminder: restart the Claude Code session so hooks are loaded, and verify with `/hooks`;
-- mention `/review` for an isolated pre-commit diff review alongside `/commit` and `/handoff`;
+- mention `/spec`, `/debug`, `/review`, `/commit`, and `/handoff` (plus `.claude/codemap.md` and `APPLY stats --project .`);
 - if the project's `CLAUDE.md` has a filled "Lessons Learned" section, mention `/claude-kit-learn` to promote durable lessons into the kit.
 
 ## Rules

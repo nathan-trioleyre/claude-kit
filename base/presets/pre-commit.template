@@ -5,6 +5,10 @@ set -e
 staged=$(git diff --cached --name-only --diff-filter=ACMR || true)
 [ -z "$staged" ] && exit 0
 
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --no-banner
+fi
+
 if [ -f "pyproject.toml" ] || [ -f "ruff.toml" ] || [ -f ".ruff.toml" ]; then
   py_files=$(printf '%s\n' "$staged" | grep -E '\.py$' || true)
   if [ -n "$py_files" ] && command -v ruff >/dev/null 2>&1; then
