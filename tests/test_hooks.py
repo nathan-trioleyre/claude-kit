@@ -34,14 +34,24 @@ class TestBaseSettings(unittest.TestCase):
         self.assertIn("Read(**/.env.local)", deny)
         self.assertIn("Read(**/*.pem)", deny)
         self.assertIn("Read(**/*.key)", deny)
+        self.assertIn("Read(**/id_rsa*)", deny)
+        self.assertIn("Read(**/id_ed25519*)", deny)
+        self.assertIn("Read(**/.npmrc)", deny)
+        self.assertIn("Read(**/.pypirc)", deny)
         self.assertIn("Read(**/credentials.json)", deny)
         self.assertNotIn("Read(**/.env.*)", deny)
         self.assertNotIn("Read(./.env.*)", deny)
 
-        pre_cmd = data["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
-        post_cmd = data["hooks"]["PostToolUse"][0]["hooks"][0]["command"]
-        self.assertIn("run-hook.sh", pre_cmd)
-        self.assertIn("run-hook.sh", post_cmd)
+        pre_hook = data["hooks"]["PreToolUse"][0]["hooks"][0]
+        post_hook = data["hooks"]["PostToolUse"][0]["hooks"][0]
+        session_hook = data["hooks"]["SessionStart"][0]["hooks"][0]
+        stop_hook = data["hooks"]["Stop"][0]["hooks"][0]
+        self.assertIn("run-hook.sh", pre_hook["command"])
+        self.assertIn("run-hook.sh", post_hook["command"])
+        self.assertIn("session-check.py", session_hook["command"])
+        self.assertIn("verify-stop.py", stop_hook["command"])
+        self.assertGreater(pre_hook.get("timeout", 0), 0)
+        self.assertGreater(stop_hook.get("timeout", 0), 0)
         self.assertTrue((KIT / "base" / "hooks" / "run-hook.sh").is_file())
 
 
@@ -211,7 +221,7 @@ class TestGuardHook(unittest.TestCase):
             self.assertEqual(res.returncode, 0, command + " " + res.stderr)
 
     def test_hook_files_carry_a_version_marker(self):
-        for name in ("guard.py", "format.py", "run-hook.sh"):
+        for name in ("guard.py", "format.py", "session-check.py", "verify-stop.py", "run-hook.sh"):
             text = (KIT / "base" / "hooks" / name).read_text(encoding="utf-8")
             self.assertIn("claude-kit-hook-version:", text, name)
 
@@ -259,6 +269,85 @@ class TestFormatHook(unittest.TestCase):
             )
             self.assertEqual(r.returncode, 0)
             self.assertEqual(target.read_text(encoding="utf-8"), "init;local;second;")
+
+    def test_format_warns_on_stderr_when_formatter_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = Path(tmp) / "proj"
+            (proj / ".claude").mkdir(parents=True)
+            target = proj / "bad.py"
+            target.write_text("def broken(:\n", encoding="utf-8")
+            (proj / ".claude" / "kit.json").write_text(json.dumps({
+                "format_rules": [
+                    {"extensions": [".py"], "command": [sys.executable, "-c", "import sys; print('syntax err', file=sys.stderr); sys.exit(1)", "{file}"]},
+                ]
+            }), encoding="utf-8")
+            r = subprocess.run(
+                [sys.executable, str(FORMAT)],
+                input=json.dumps({"tool_name": "Write", "tool_input": {"file_path": str(target)}, "cwd": str(proj)}),
+                env={**os.environ, "CLAUDE_PROJECT_DIR": str(proj)},
+                capture_output=True, text=True,
+            )
+            self.assertEqual(r.returncode, 0)
+            self.assertIn("format.py:", r.stderr)
+            self.assertIn("syntax err", r.stderr)
+
+
+class TestSessionAndStopHooks(unittest.TestCase):
+    def test_session_check_reports_proposed_and_pending_decisions(self):
+        session_hook = KIT / "base" / "hooks" / "session-check.py"
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = Path(tmp) / "proj"
+            (proj / ".claude").mkdir(parents=True)
+            (proj / ".claude" / "kit.json").write_text(json.dumps({
+                "decisions": {"python": {"formatter": {"choice": "pending"}}}
+            }), encoding="utf-8")
+            (proj / "CLAUDE.md.proposed").write_text("# proposed\n", encoding="utf-8")
+            r = subprocess.run(
+                [sys.executable, str(session_hook)],
+                input="{}", env={**os.environ, "CLAUDE_PROJECT_DIR": str(proj)},
+                capture_output=True, text=True,
+            )
+            self.assertEqual(r.returncode, 0)
+            self.assertIn("CLAUDE.md.proposed pending merge", r.stdout)
+            self.assertIn("python/formatter", r.stdout)
+
+    def test_verify_stop_hook_respects_opt_in_and_loop_guard(self):
+        stop_hook = KIT / "base" / "hooks" / "verify-stop.py"
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = Path(tmp) / "proj"
+            (proj / ".claude").mkdir(parents=True)
+            env = {**os.environ, "CLAUDE_PROJECT_DIR": str(proj)}
+
+            # Disabled by default -> exit 0 even with failing command
+            (proj / ".claude" / "kit.json").write_text(json.dumps({
+                "stop_verify": False,
+                "verify_command": f'"{sys.executable}" -c "import sys; sys.exit(1)"',
+            }), encoding="utf-8")
+            r_off = subprocess.run([sys.executable, str(stop_hook)], input="{}", env=env, capture_output=True, text=True)
+            self.assertEqual(r_off.returncode, 0)
+
+            # Enabled + failing -> exit 2 with BLOCKED on stderr
+            (proj / ".claude" / "kit.json").write_text(json.dumps({
+                "stop_verify": True,
+                "verify_command": f'"{sys.executable}" -c "import sys; print(\'boom\'); sys.exit(1)"',
+            }), encoding="utf-8")
+            r_fail = subprocess.run([sys.executable, str(stop_hook)], input="{}", env=env, capture_output=True, text=True)
+            self.assertEqual(r_fail.returncode, 2)
+            self.assertIn("BLOCKED:", r_fail.stderr)
+            self.assertIn("boom", r_fail.stderr)
+
+            # stop_hook_active=True prevents infinite loop -> exit 0
+            r_loop = subprocess.run([sys.executable, str(stop_hook)],
+                                    input=json.dumps({"stop_hook_active": True}), env=env, capture_output=True, text=True)
+            self.assertEqual(r_loop.returncode, 0)
+
+            # Enabled + passing -> exit 0
+            (proj / ".claude" / "kit.json").write_text(json.dumps({
+                "stop_verify": True,
+                "verify_command": f'"{sys.executable}" -c "print(\'ok\')"',
+            }), encoding="utf-8")
+            r_ok = subprocess.run([sys.executable, str(stop_hook)], input="{}", env=env, capture_output=True, text=True)
+            self.assertEqual(r_ok.returncode, 0)
 
 
 if __name__ == "__main__":

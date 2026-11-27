@@ -29,6 +29,10 @@
       "Read(**/*.key)",
       "Read(**/*.p12)",
       "Read(**/*.pfx)",
+      "Read(**/id_rsa*)",
+      "Read(**/id_ed25519*)",
+      "Read(**/.npmrc)",
+      "Read(**/.pypirc)",
       "Read(**/credentials.json)",
       "Bash(cat *.env)",
       "Bash(cat *.env.*)",
@@ -39,13 +43,25 @@
     ]
   },
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "HOOK_SCRIPT=session-check.py; . \"$CLAUDE_PROJECT_DIR/.claude/hooks/run-hook.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Edit|Write|MultiEdit|Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "HOOK_SCRIPT=guard.py; . \"$CLAUDE_PROJECT_DIR/.claude/hooks/run-hook.sh\""
+            "command": "HOOK_SCRIPT=guard.py; . \"$CLAUDE_PROJECT_DIR/.claude/hooks/run-hook.sh\"",
+            "timeout": 10
           }
         ]
       }
@@ -56,7 +72,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "HOOK_SCRIPT=format.py; . \"$CLAUDE_PROJECT_DIR/.claude/hooks/run-hook.sh\""
+            "command": "HOOK_SCRIPT=format.py; . \"$CLAUDE_PROJECT_DIR/.claude/hooks/run-hook.sh\"",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "HOOK_SCRIPT=verify-stop.py; . \"$CLAUDE_PROJECT_DIR/.claude/hooks/run-hook.sh\"",
+            "timeout": 120
           }
         ]
       }
