@@ -1,0 +1,21 @@
+{
+  "stack": "stack-name",
+  "display_name": "Readable name (e.g., Python 3.12 + uv)",
+  "detect": ["hint-file.toml", "*.hint-ext"],
+  "paths": [],
+  "commands": {
+    "install": "command or null",
+    "dev": "command or null",
+    "test": "command or null",
+    "lint": "command or null",
+    "format": "command or null",
+    "build": "command or null",
+    "verify": "the single command to run before saying 'done'"
+  },
+  "permissions_allow": ["Bash(test-command *)"],
+  "format_rules": [
+    { "extensions": [".ext"], "command": ["formatter", "{file}"] }
+  ],
+  "sources": ["https://official-documentation"],
+  "last_verified": "YYYY-MM-DD"
+}
