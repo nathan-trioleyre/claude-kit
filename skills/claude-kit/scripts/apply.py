@@ -8,6 +8,9 @@ Subcommands:
   sync      re-applies only the kit-managed parts (settings, hooks, kit.json, org extras)
             to an already configured project, using the profiles recorded in kit.json
   doctor    reports drift between a project and the current kit (exit 1 if issues)
+  audit     inventories what a project already has (CLAUDE.md, hooks, tooling) and lists
+            conflicts between the project's tools and the kit's (JSON on stdout, read-only)
+  decide    records how a tooling conflict is resolved (keep_existing | adopt_kit | keep_both)
   validate  validates profile.json schema and practices.md constraints
 
 Layers (later layers add to earlier ones, never remove): base -> org -> stack profiles -> project.
@@ -16,6 +19,8 @@ Safety rules:
   - an existing CLAUDE.md or .claude/rules/<stack>.md is never overwritten (.proposed)
   - existing settings.json: additive merge (legacy kit hooks upgraded safely)
   - a hook file is upgraded only if it is unmodified since the kit installed it
+  - a tool the project already uses (e.g. black vs the kit's ruff) is never overridden silently:
+    until a decision is recorded, the kit withholds its overlapping rules
   - --dry-run writes nothing
 
 No external dependencies: Python 3.9+ is sufficient.
@@ -252,6 +257,9 @@ def validate_profile_folder(folder: Path) -> list:
     if paths is not None and (not isinstance(paths, list) or not all(isinstance(x, str) and x for x in paths)):
         errors.append(f"{folder.name}: optional 'paths' must be a list of non-empty glob strings")
 
+    if "tooling" in data:
+        errors.extend(validate_tooling(folder.name, data["tooling"]))
+
     practices_file = folder / "practices.md"
     if not practices_file.is_file():
         errors.append(f"{folder.name}: missing practices.md")
@@ -262,6 +270,81 @@ def validate_profile_folder(folder: Path) -> list:
         elif len(non_empty_lines) > MAX_PRACTICES_LINES:
             errors.append(f"{folder.name}: practices.md has {len(non_empty_lines)} lines (max {MAX_PRACTICES_LINES})")
 
+    return errors
+
+
+def _marker_errors(prefix: str, markers) -> list:
+    if not isinstance(markers, list):
+        return [f"{prefix}: 'markers' must be a list"]
+    errors = []
+    for i, m in enumerate(markers):
+        if not isinstance(m, dict) or not isinstance(m.get("file"), str) or not m["file"]:
+            errors.append(f"{prefix}: markers[{i}] needs a 'file' glob")
+        elif "contains" in m and not (isinstance(m["contains"], str) and m["contains"]):
+            errors.append(f"{prefix}: markers[{i}].contains must be a non-empty string")
+    return errors
+
+
+def _perm_errors(prefix: str, rules) -> list:
+    if not isinstance(rules, list) or not all(isinstance(r, str) for r in rules):
+        return [f"{prefix}: permissions must be a list of strings"]
+    return [f"{prefix}: {reason}" for reason in (unsafe_permission(r) for r in rules) if reason]
+
+
+def validate_tooling(name: str, tooling) -> list:
+    """Validate the optional 'tooling' section (conflict detection against tools a project already uses)."""
+    if not isinstance(tooling, list):
+        return [f"{name}: 'tooling' must be a list"]
+    errors, seen = [], set()
+    for idx, item in enumerate(tooling):
+        pre = f"{name}: tooling[{idx}]"
+        if not isinstance(item, dict):
+            errors.append(f"{pre} must be an object")
+            continue
+        concern = item.get("concern")
+        if not isinstance(concern, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]*", concern):
+            errors.append(f"{pre}.concern must be a lowercase slug")
+        elif concern in seen:
+            errors.append(f"{pre}.concern '{concern}' is duplicated")
+        else:
+            seen.add(concern)
+        kit = item.get("kit")
+        if not isinstance(kit, dict) or not isinstance(kit.get("name"), str) or not kit["name"]:
+            errors.append(f"{pre}.kit must be an object with a 'name'")
+        else:
+            errors.extend(_marker_errors(f"{pre}.kit", kit.get("markers", [])))
+            cmds = kit.get("commands", [])
+            if not isinstance(cmds, list) or any(c not in COMMAND_LABELS for c in cmds):
+                errors.append(f"{pre}.kit.commands must list keys among {', '.join(COMMAND_LABELS)}")
+            if not isinstance(kit.get("format_rules", False), bool):
+                errors.append(f"{pre}.kit.format_rules must be a boolean")
+            errors.extend(_perm_errors(f"{pre}.kit", kit.get("permissions", [])))
+            terms = kit.get("practice_terms", [])
+            if not isinstance(terms, list) or not all(isinstance(t, str) and t for t in terms):
+                errors.append(f"{pre}.kit.practice_terms must be a list of strings")
+        alts = item.get("alternatives")
+        if not isinstance(alts, list) or not alts:
+            errors.append(f"{pre}.alternatives must be a non-empty list")
+            continue
+        for j, alt in enumerate(alts):
+            apre = f"{pre}.alternatives[{j}]"
+            if not isinstance(alt, dict) or not isinstance(alt.get("name"), str) or not alt["name"]:
+                errors.append(f"{apre} must be an object with a 'name'")
+                continue
+            if not alt.get("markers") and not alt.get("hooks"):
+                errors.append(f"{apre} needs 'markers' or 'hooks' to be detectable")
+            errors.extend(_marker_errors(apre, alt.get("markers", [])))
+            hooks = alt.get("hooks", [])
+            if not isinstance(hooks, list) or not all(isinstance(h, str) and h for h in hooks):
+                errors.append(f"{apre}.hooks must be a list of strings")
+            acmds = alt.get("commands", {})
+            if not isinstance(acmds, dict) or any(k not in COMMAND_LABELS or not isinstance(v, str) for k, v in acmds.items()):
+                errors.append(f"{apre}.commands must map command keys to strings")
+            errors.extend(_perm_errors(apre, alt.get("permissions_allow", [])))
+            rule = alt.get("format_rule")
+            if rule is not None and not (isinstance(rule, dict) and isinstance(rule.get("extensions"), list)
+                                         and isinstance(rule.get("command"), list) and "{file}" in rule["command"]):
+                errors.append(f"{apre}.format_rule needs 'extensions' and a 'command' containing '{{file}}'")
     return errors
 
 
@@ -308,10 +391,14 @@ def collect_project_files(project: Path, max_depth: int = MAX_DETECT_DEPTH) -> l
     return rel_files
 
 
-def pattern_matches(rel_files: list, pattern: str) -> bool:
+def file_matches(rel_path: str, pattern: str) -> bool:
     if "/" in pattern:
-        return any(fnmatch.fnmatch(rp, pattern) for rp in rel_files)
-    return any(fnmatch.fnmatch(rp.rsplit("/", 1)[-1], pattern) for rp in rel_files)
+        return fnmatch.fnmatch(rel_path, pattern)
+    return fnmatch.fnmatch(rel_path.rsplit("/", 1)[-1], pattern)
+
+
+def pattern_matches(rel_files: list, pattern: str) -> bool:
+    return any(file_matches(rp, pattern) for rp in rel_files)
 
 
 def detect_matched(project: Path) -> list:
@@ -324,6 +411,204 @@ def cmd_detect(args) -> None:
     project = Path(args.project).resolve()
     known = [load_profile(f.name)["stack"] for f in profile_dirs()]
     print(json.dumps({"matched": detect_matched(project), "known_profiles": known}, ensure_ascii=False))
+
+
+# --------------------------------------------------------------------- tooling
+# A profile may declare "tooling" concerns (formatter, linter, package manager...): the tool the kit
+# prefers plus known alternatives with the files/hooks that reveal them. When a project already uses
+# an alternative, the kit must not silently impose its own tool: the user decides, per concern.
+DECISION_CHOICES = ("keep_existing", "adopt_kit", "keep_both")
+MAX_MARKER_BYTES = 200_000
+COMMAND_KEYS_NEEDING_VERIFY = {"install", "dev", "test", "lint", "build"}
+
+
+def _word_in(text: str, term: str) -> bool:
+    return re.search(r"(?<![\w-])" + re.escape(term) + r"(?![\w-])", text, re.IGNORECASE) is not None
+
+
+def marker_evidence(project: Path, rel_files: list, marker: dict) -> list:
+    """Files matching a marker (and containing its optional text); returns human-readable evidence."""
+    needle = marker.get("contains")
+    found = []
+    for rp in rel_files:
+        if not file_matches(rp, marker["file"]):
+            continue
+        if not needle:
+            found.append(rp)
+            continue
+        try:
+            text = (project / rp).read_text(encoding="utf-8", errors="ignore")[:MAX_MARKER_BYTES]
+        except OSError:
+            continue
+        if needle.lower() in text.lower():
+            found.append(f"{rp} contains '{needle}'")
+        if len(found) >= 3:
+            break
+    return found[:3]
+
+
+def foreign_hooks(project: Path) -> list:
+    """Hooks declared in the project's settings that were not installed by the kit."""
+    found = []
+    for name in ("settings.json", "settings.local.json"):
+        f = project / ".claude" / name
+        if not f.is_file():
+            continue
+        try:
+            hooks = json.loads(f.read_text(encoding="utf-8")).get("hooks") or {}
+        except (OSError, json.JSONDecodeError, AttributeError):
+            continue
+        for event, groups in hooks.items() if isinstance(hooks, dict) else []:
+            for group in groups if isinstance(groups, list) else []:
+                for hook in group.get("hooks", []) if isinstance(group, dict) else []:
+                    cmd = hook.get("command", "") if isinstance(hook, dict) else ""
+                    if cmd and _kit_hook_tag(cmd) is None:
+                        found.append({"file": name, "event": event, "command": cmd})
+    return found
+
+
+def normalize_decision(value) -> dict:
+    decision = {"choice": value} if isinstance(value, str) else dict(value or {})
+    if decision.get("choice") not in DECISION_CHOICES:
+        raise SystemExit(f"Invalid decision {value!r}: expected one of {', '.join(DECISION_CHOICES)}")
+    return decision
+
+
+def analyze_tooling(project: Path, profiles: list, decisions: dict) -> list:
+    """One entry per tooling concern: what the kit prefers, what the project already uses, and the outcome.
+
+    status: none (no competing tool) | pending (competing tool, no decision yet: the kit holds back)
+            | resolved (user decided) | migration_pending (kit adopted but traces of the old tool remain)
+    effective: what the kit actually applies (adopt_kit | keep_existing | keep_both).
+    """
+    rel_files = collect_project_files(project)
+    hooks = foreign_hooks(project)
+    results = []
+    for p in profiles:
+        for item in p.get("tooling", []):
+            concern, kit = item["concern"], item["kit"]
+            kit_evidence = [e for m in kit.get("markers", []) for e in marker_evidence(project, rel_files, m)]
+            existing = []
+            for alt in item.get("alternatives", []):
+                evidence = [e for m in alt.get("markers", []) for e in marker_evidence(project, rel_files, m)]
+                evidence += [f"hook: {h['command']}" for h in hooks
+                             if any(_word_in(h["command"], term) for term in alt.get("hooks", []))]
+                if evidence:
+                    existing.append({"name": alt["name"], "evidence": evidence[:4]})
+            recorded = (decisions.get(p["stack"]) or {}).get(concern)
+            if not existing:
+                status, effective = "none", "adopt_kit"
+            elif recorded:
+                effective = recorded["choice"]
+                status = "migration_pending" if effective == "adopt_kit" else "resolved"
+            else:
+                status, effective = "pending", "keep_existing"
+            results.append({
+                "stack": p["stack"], "concern": concern,
+                "kit": {"name": kit["name"], "evidence": kit_evidence[:3]},
+                "existing": existing, "decision": recorded, "status": status, "effective": effective,
+            })
+    return results
+
+
+def effective_profile(profile: dict, analysis: list) -> dict:
+    """Profile as it must be applied once tooling decisions are taken into account.
+
+    For every concern kept as-is: the kit's overlapping commands, formatting rule, permissions and
+    practice lines are withheld, and the existing tool's known equivalents (if any) take their place.
+    """
+    mine = [a for a in analysis if a["stack"] == profile["stack"]]
+    kept = [a for a in mine if a["effective"] == "keep_existing"]
+    if not kept:
+        return profile
+    eff = json.loads(json.dumps(profile))
+    items = {i["concern"]: i for i in profile.get("tooling", [])}
+    kept_concerns = {a["concern"] for a in kept}
+
+    owners = {}
+    for a in mine:
+        for rule in items[a["concern"]]["kit"].get("permissions", []):
+            owners.setdefault(rule, set()).add(a["concern"])
+    withheld = {rule for rule, who in owners.items() if who <= kept_concerns}
+    eff["permissions_allow"] = [r for r in eff.get("permissions_allow", []) if r not in withheld]
+
+    commands, practices = eff["commands"], eff.get("_practices", "")
+    for a in kept:
+        item = items[a["concern"]]
+        kit = item["kit"]
+        alt = next(x for x in item["alternatives"] if x["name"] == a["existing"][0]["name"])
+        keys = kit.get("commands", [])
+        for key in keys:
+            commands[key] = alt.get("commands", {}).get(key)
+        if "verify" not in keys and COMMAND_KEYS_NEEDING_VERIFY & set(keys):
+            commands["verify"] = None
+        if kit.get("format_rules"):
+            eff["format_rules"] = [alt["format_rule"]] if alt.get("format_rule") else []
+        for rule in alt.get("permissions_allow", []):
+            if rule not in eff["permissions_allow"]:
+                eff["permissions_allow"].append(rule)
+        terms = kit.get("practice_terms", [])
+        practices = "\n".join(line for line in practices.splitlines()
+                              if not any(_word_in(line, t) for t in terms))
+        names = ", ".join(e["name"] for e in a["existing"])
+        practices += f"\n- Keep the project's own {a['concern']} ({names}); do not introduce {kit['name']}."
+    eff["_practices"] = practices.strip()
+    return eff
+
+
+def record_decisions(decisions: dict, incoming: dict, analysis: list, report: list) -> None:
+    """Merge decisions given by the caller into the stored ones, stamping what was detected at the time."""
+    valid = {(a["stack"], a["concern"]): a for a in analysis}
+    for stack, concerns in (incoming or {}).items():
+        for concern, value in (concerns or {}).items():
+            found = valid.get((stack, concern))
+            if not found:
+                report.append(f"! decision ignored: no tooling concern '{concern}' in profile '{stack}'")
+                continue
+            decision = normalize_decision(value)
+            decision.setdefault("existing", [e["name"] for e in found["existing"]])
+            decision.setdefault("date", date.today().isoformat())
+            decisions.setdefault(stack, {})[concern] = decision
+
+
+def tooling_report(analysis: list) -> list:
+    lines = []
+    for a in analysis:
+        label = f"{a['stack']}/{a['concern']}"
+        names = ", ".join(e["name"] for e in a["existing"])
+        if a["status"] == "pending":
+            lines.append(f"! CONFLICT {label}: project uses {names}, the kit prefers {a['kit']['name']}. "
+                         f"Kit rules for it are withheld until you decide (keep_existing | adopt_kit | keep_both)")
+        elif a["status"] == "migration_pending":
+            lines.append(f"! {label}: kit adopted but traces of {names} remain: "
+                         + "; ".join(ev for e in a["existing"] for ev in e["evidence"]))
+        elif a["status"] == "resolved":
+            lines.append(f"tooling   {label}: {a['effective']} ({names}), decided {a['decision'].get('date', '?')}")
+    return lines
+
+
+def split_sections(text: str, ignore_prefixes: tuple = ()) -> dict:
+    sections, current = {}, None
+    for line in text.splitlines():
+        if ignore_prefixes and line.startswith(ignore_prefixes):
+            continue
+        if line.startswith("## "):
+            current = line[3:].strip()
+            sections[current] = []
+        elif current is not None:
+            sections[current].append(line)
+    return {name: "\n".join(lines).strip() for name, lines in sections.items()}
+
+
+def section_summary(existing: str, rendered: str, ignore_prefixes: tuple = ()) -> list:
+    """Section-level comparison of a user's file against what the kit would generate."""
+    old, new = split_sections(existing, ignore_prefixes), split_sections(rendered, ignore_prefixes)
+    rows = (
+        ("only in the kit's version", [n for n in new if n not in old]),
+        ("only in your file (kept as is)", [n for n in old if n not in new]),
+        ("present in both but different", [n for n in new if n in old and new[n] != old[n]]),
+    )
+    return [f"          {title}: {', '.join(names)}" for title, names in rows if names]
 
 
 # ----------------------------------------------------------------------- apply
@@ -514,6 +799,7 @@ def write_non_destructive(target: Path, rel_label: str, rendered: str, dry: bool
     proposed_label = rel_label + ".proposed"
     write_text(proposed, rendered, dry)
     report.append(f"proposed  {rel_label} already exists -> written to {proposed_label} (compare manually)")
+    report.extend(section_summary(existing, rendered, ignore_prefixes))
     if dry:
         diff = list(difflib.unified_diff(
             existing.splitlines(), rendered.splitlines(),
@@ -653,22 +939,21 @@ def update_gitignore(project: Path, dry: bool, report: list) -> None:
 
 
 def write_kit_json(project: Path, profiles: list, previous: dict, managed: dict, rendered: dict,
-                   dry: bool, report: list) -> None:
+                   decisions: dict, effective: dict, dry: bool, report: list) -> None:
     known = dict(previous.get("profiles", {}))
     for p in profiles:
         known[p["stack"]] = {"last_verified": p["last_verified"]}
     format_rules = []
     for name in list(known):
-        try:
-            format_rules.extend(load_profile(name).get("format_rules", []))
-        except SystemExit:
-            pass  # profile deleted from kit in the meantime
+        if name in effective:  # profiles deleted from the kit in the meantime are skipped
+            format_rules.extend(effective[name].get("format_rules", []))
     kit_json = {
         "generated_by": "claude-kit",
         "kit_version": KIT_VERSION,
         "date": date.today().isoformat(),
         "profiles": known,
         "format_rules": format_rules,
+        "decisions": decisions,
         "managed": managed,
         "rendered": rendered,
     }
@@ -684,7 +969,21 @@ def run(project: Path, profile_names: list, ctx: dict, dry: bool, *, full: bool,
     managed = dict(previous.get("managed", {}))
     rendered_state = dict(previous.get("rendered", {}))
 
-    profiles = [load_profile(name) for name in profile_names]
+    # Every profile this project knows (previous runs + this one), adjusted by tooling decisions.
+    known_names = list(dict.fromkeys(
+        list(profile_names) + [n for n in previous.get("profiles", {}) if (PROFILES / n / "profile.json").is_file()]))
+    raw = {name: load_profile(name) for name in known_names}
+    decisions = json.loads(json.dumps(previous.get("decisions", {})))
+    incoming = {s: {c: normalize_decision(v) for c, v in (cs or {}).items()}
+                for s, cs in ctx.get("decisions", {}).items()}
+    for stack, concerns in incoming.items():
+        decisions.setdefault(stack, {}).update(concerns)
+    analysis = analyze_tooling(project, list(raw.values()), decisions)
+    record_decisions(decisions, incoming, analysis, report)
+    effective = {name: effective_profile(p, analysis) for name, p in raw.items()}
+    report.extend(tooling_report(analysis))
+
+    profiles = [effective[name] for name in profile_names]
     for p in profiles:
         if age_days(p) > STALE_DAYS:
             report.append(f"! profile '{p['stack']}' is stale or unverified ({age_days(p)}d): consider /claude-kit-refresh {p['stack']}")
@@ -726,7 +1025,7 @@ def run(project: Path, profile_names: list, ctx: dict, dry: bool, *, full: bool,
     sync_extras(project, managed, dry, report, force_hooks, use_org)
 
     # 5. kit.json (metadata, formatting rules, hashes)
-    write_kit_json(project, profiles, previous, managed, rendered_state, dry, report)
+    write_kit_json(project, profiles, previous, managed, rendered_state, decisions, effective, dry, report)
 
     # 6. .gitignore (local Claude files)
     update_gitignore(project, dry, report)
@@ -784,12 +1083,27 @@ def cmd_doctor(args) -> None:
         else:
             issues.append(f"{label} modified locally or predates hash tracking: run sync --force-hooks to reset")
 
+    profile_names = [n for n in kit_json.get("profiles", {}) if (PROFILES / n / "profile.json").is_file()]
+    raw_profiles = [load_profile(n) for n in profile_names]
+    analysis = analyze_tooling(project, raw_profiles, kit_json.get("decisions", {}))
+    effective = [effective_profile(p, analysis) for p in raw_profiles]
+    for a in analysis:
+        label = f"{a['stack']}/{a['concern']}"
+        names = ", ".join(e["name"] for e in a["existing"])
+        if a["status"] == "pending":
+            issues.append(f"tooling conflict {label}: project uses {names}, kit prefers {a['kit']['name']}, no decision recorded: "
+                          "run /claude-kit (or `apply.py decide`)")
+        elif a["status"] == "migration_pending":
+            issues.append(f"{label}: kit adopted but {names} is still configured ("
+                          + "; ".join(ev for e in a["existing"] for ev in e["evidence"]) + "): finish the migration")
+        elif a["status"] == "resolved":
+            oks.append(f"tooling {label}: {a['effective']} ({names})")
+
     settings_path = project / ".claude" / "settings.json"
     if settings_path.is_file():
         try:
-            profile_names = [n for n in kit_json.get("profiles", {}) if (PROFILES / n / "profile.json").is_file()]
             _, changes = merge_settings(json.loads(settings_path.read_text(encoding="utf-8")),
-                                        build_wanted_settings([load_profile(n) for n in profile_names], not args.no_org))
+                                        build_wanted_settings(effective, not args.no_org))
             if changes:
                 issues.append(f".claude/settings.json is missing {len(changes)} kit entries: run sync")
             else:
@@ -830,6 +1144,71 @@ def cmd_doctor(args) -> None:
         raise SystemExit(1)
 
 
+def cmd_audit(args) -> None:
+    """Read-only inventory of what the project already has, plus tooling conflicts."""
+    project = Path(args.project).resolve()
+    kit_json = load_kit_json(project)
+    names = args.profiles or sorted(set(detect_matched(project)) | set(kit_json.get("profiles", {})))
+    names = [n for n in names if (PROFILES / n / "profile.json").is_file()]
+    profiles = [load_profile(n) for n in names]
+    analysis = analyze_tooling(project, profiles, kit_json.get("decisions", {}))
+
+    claude_md = project / "CLAUDE.md"
+    sections = list(split_sections(claude_md.read_text(encoding="utf-8"))) if claude_md.is_file() else []
+    managed = set(kit_json.get("managed", {}))
+    claude_dir = project / ".claude"
+    own_files = []
+    if claude_dir.is_dir():
+        for path in sorted(claude_dir.rglob("*")):
+            rel = path.relative_to(project).as_posix()
+            if (path.is_file() and rel not in managed and not rel.endswith((".proposed", "settings.json", "kit.json"))
+                    and ".claude/logs/" not in rel and not rel.endswith("settings.local.json")):
+                own_files.append(rel)
+    extra_allow = []
+    settings_path = claude_dir / "settings.json"
+    if settings_path.is_file():
+        try:
+            allow = json.loads(settings_path.read_text(encoding="utf-8")).get("permissions", {}).get("allow", [])
+            wanted = build_wanted_settings([effective_profile(p, analysis) for p in profiles], not args.no_org)
+            extra_allow = [r for r in allow if r not in wanted["permissions"]["allow"]]
+        except (json.JSONDecodeError, AttributeError):
+            pass
+
+    print(json.dumps({
+        "profiles": names,
+        "kit_configured": bool(kit_json),
+        "existing": {
+            "claude_md": claude_md.is_file(),
+            "claude_md_sections": sections,
+            "project_owned_claude_files": own_files,
+            "foreign_hooks": foreign_hooks(project),
+            "foreign_permissions": extra_allow,
+        },
+        "tooling": [a for a in analysis if a["status"] != "none"],
+        "pending_conflicts": sum(1 for a in analysis if a["status"] == "pending"),
+    }, ensure_ascii=False, indent=2))
+
+
+def cmd_decide(args) -> None:
+    project = Path(args.project).resolve()
+    kit_json = load_kit_json(project)
+    if not kit_json:
+        raise SystemExit("No .claude/kit.json: run /claude-kit (apply) first, or pass decisions in its context.")
+    if args.profile not in kit_json.get("profiles", {}) or not (PROFILES / args.profile / "profile.json").is_file():
+        raise SystemExit(f"Profile '{args.profile}' is not configured in this project.")
+    profile = load_profile(args.profile)
+    analysis = analyze_tooling(project, [profile], kit_json.get("decisions", {}))
+    report = []
+    decisions = kit_json.setdefault("decisions", {})
+    record_decisions(decisions, {args.profile: {args.concern: args.choice}}, analysis, report)
+    if report:
+        raise SystemExit("\n".join(report))
+    kit_json["decisions"] = decisions
+    write_text(project / ".claude" / "kit.json", json.dumps(kit_json, indent=2, ensure_ascii=False) + "\n", args.dry_run)
+    print(("[DRY-RUN: nothing was written]\n" if args.dry_run else "")
+          + f"recorded {args.profile}/{args.concern}: {args.choice}. Run `sync` to apply it to settings and kit.json.")
+
+
 # ------------------------------------------------------------------------ main
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -861,6 +1240,20 @@ def main() -> None:
     p_doctor.add_argument("--project", default=".")
     p_doctor.add_argument("--no-org", action="store_true")
     p_doctor.set_defaults(func=cmd_doctor)
+
+    p_audit = sub.add_parser("audit", help="inventory existing project config and tooling conflicts (JSON)")
+    p_audit.add_argument("--project", default=".")
+    p_audit.add_argument("--profiles", nargs="*", default=[], help="stacks to audit (default: detected + configured)")
+    p_audit.add_argument("--no-org", action="store_true")
+    p_audit.set_defaults(func=cmd_audit)
+
+    p_decide = sub.add_parser("decide", help="record how a tooling conflict is resolved")
+    p_decide.add_argument("--project", default=".")
+    p_decide.add_argument("--profile", required=True)
+    p_decide.add_argument("--concern", required=True)
+    p_decide.add_argument("--choice", required=True, choices=DECISION_CHOICES)
+    p_decide.add_argument("--dry-run", action="store_true")
+    p_decide.set_defaults(func=cmd_decide)
 
     args = parser.parse_args()
     args.func(args)

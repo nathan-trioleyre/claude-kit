@@ -23,6 +23,39 @@
     "Bash(dotnet format*)"
   ],
   "format_rules": [],
+  "tooling": [
+    {
+      "concern": "formatter",
+      "kit": {
+        "name": "dotnet format",
+        "markers": [],
+        "commands": [
+          "format",
+          "lint"
+        ],
+        "permissions": [
+          "Bash(dotnet format*)"
+        ]
+      },
+      "alternatives": [
+        {
+          "name": "csharpier",
+          "markers": [
+            {
+              "file": ".csharpierrc*"
+            },
+            {
+              "file": ".config/dotnet-tools.json",
+              "contains": "csharpier"
+            }
+          ],
+          "hooks": [
+            "csharpier"
+          ]
+        }
+      ]
+    }
+  ],
   "sources": [
     "https://learn.microsoft.com/en-us/dotnet/core/tools/",
     "https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/coding-style/coding-conventions",

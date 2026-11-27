@@ -37,6 +37,240 @@
       ]
     }
   ],
+  "tooling": [
+    {
+      "concern": "formatter",
+      "kit": {
+        "name": "ruff format",
+        "markers": [
+          {
+            "file": "ruff.toml"
+          },
+          {
+            "file": ".ruff.toml"
+          },
+          {
+            "file": "pyproject.toml",
+            "contains": "[tool.ruff"
+          }
+        ],
+        "commands": [
+          "format"
+        ],
+        "format_rules": true,
+        "practice_terms": [
+          "ruff"
+        ]
+      },
+      "alternatives": [
+        {
+          "name": "black",
+          "markers": [
+            {
+              "file": "pyproject.toml",
+              "contains": "[tool.black]"
+            },
+            {
+              "file": ".pre-commit-config.yaml",
+              "contains": "psf/black"
+            }
+          ],
+          "hooks": [
+            "black"
+          ],
+          "commands": {
+            "format": "black ."
+          },
+          "format_rule": {
+            "extensions": [
+              ".py"
+            ],
+            "command": [
+              "black",
+              "{file}"
+            ]
+          }
+        },
+        {
+          "name": "yapf",
+          "markers": [
+            {
+              "file": ".style.yapf"
+            },
+            {
+              "file": "pyproject.toml",
+              "contains": "[tool.yapf]"
+            }
+          ],
+          "hooks": [
+            "yapf"
+          ]
+        }
+      ]
+    },
+    {
+      "concern": "linter",
+      "kit": {
+        "name": "ruff check",
+        "markers": [
+          {
+            "file": "ruff.toml"
+          },
+          {
+            "file": ".ruff.toml"
+          },
+          {
+            "file": "pyproject.toml",
+            "contains": "[tool.ruff"
+          }
+        ],
+        "commands": [
+          "lint"
+        ],
+        "permissions": [
+          "Bash(ruff*)"
+        ],
+        "practice_terms": [
+          "ruff"
+        ]
+      },
+      "alternatives": [
+        {
+          "name": "flake8",
+          "markers": [
+            {
+              "file": ".flake8"
+            },
+            {
+              "file": "setup.cfg",
+              "contains": "[flake8]"
+            },
+            {
+              "file": "tox.ini",
+              "contains": "[flake8]"
+            }
+          ],
+          "hooks": [
+            "flake8"
+          ],
+          "commands": {
+            "lint": "flake8"
+          },
+          "permissions_allow": [
+            "Bash(flake8*)"
+          ]
+        },
+        {
+          "name": "pylint",
+          "markers": [
+            {
+              "file": ".pylintrc"
+            },
+            {
+              "file": "pylintrc"
+            },
+            {
+              "file": "pyproject.toml",
+              "contains": "[tool.pylint"
+            }
+          ],
+          "hooks": [
+            "pylint"
+          ],
+          "permissions_allow": [
+            "Bash(pylint*)"
+          ]
+        }
+      ]
+    },
+    {
+      "concern": "package-manager",
+      "kit": {
+        "name": "uv",
+        "markers": [
+          {
+            "file": "uv.lock"
+          },
+          {
+            "file": "pyproject.toml",
+            "contains": "[tool.uv"
+          }
+        ],
+        "commands": [
+          "install",
+          "dev",
+          "test",
+          "lint",
+          "format",
+          "build",
+          "verify"
+        ],
+        "permissions": [
+          "Bash(uv sync*)",
+          "Bash(uv run pytest*)",
+          "Bash(uv run ruff*)",
+          "Bash(uv run mypy*)"
+        ],
+        "practice_terms": [
+          "uv"
+        ]
+      },
+      "alternatives": [
+        {
+          "name": "poetry",
+          "markers": [
+            {
+              "file": "poetry.lock"
+            },
+            {
+              "file": "pyproject.toml",
+              "contains": "[tool.poetry]"
+            }
+          ],
+          "hooks": [
+            "poetry"
+          ],
+          "commands": {
+            "install": "poetry install",
+            "test": "poetry run pytest"
+          },
+          "permissions_allow": [
+            "Bash(poetry install*)",
+            "Bash(poetry run pytest*)"
+          ]
+        },
+        {
+          "name": "pdm",
+          "markers": [
+            {
+              "file": "pdm.lock"
+            },
+            {
+              "file": "pyproject.toml",
+              "contains": "[tool.pdm"
+            }
+          ],
+          "hooks": [
+            "pdm"
+          ]
+        },
+        {
+          "name": "pipenv",
+          "markers": [
+            {
+              "file": "Pipfile"
+            },
+            {
+              "file": "Pipfile.lock"
+            }
+          ],
+          "hooks": [
+            "pipenv"
+          ]
+        }
+      ]
+    }
+  ],
   "sources": [
     "https://docs.astral.sh/uv/",
     "https://docs.astral.sh/ruff/",

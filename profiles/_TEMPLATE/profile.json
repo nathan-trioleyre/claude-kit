@@ -16,6 +16,15 @@
   "format_rules": [
     { "extensions": [".ext"], "command": ["formatter", "{file}"] }
   ],
+  "tooling": [
+    {
+      "concern": "formatter",
+      "kit": { "name": "kit-formatter", "markers": [{ "file": "kit-formatter.toml" }], "commands": ["format"], "format_rules": true },
+      "alternatives": [
+        { "name": "other-formatter", "markers": [{ "file": "config.toml", "contains": "[other-formatter]" }], "hooks": ["other-formatter"] }
+      ]
+    }
+  ],
   "sources": ["https://official-documentation"],
   "last_verified": "YYYY-MM-DD"
 }

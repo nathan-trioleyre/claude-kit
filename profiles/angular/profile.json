@@ -39,6 +39,153 @@
       ]
     }
   ],
+  "tooling": [
+    {
+      "concern": "formatter",
+      "kit": {
+        "name": "prettier",
+        "markers": [
+          {
+            "file": ".prettierrc*"
+          },
+          {
+            "file": "prettier.config.*"
+          },
+          {
+            "file": "package.json",
+            "contains": "\"prettier\""
+          }
+        ],
+        "commands": [
+          "format"
+        ],
+        "format_rules": true
+      },
+      "alternatives": [
+        {
+          "name": "biome",
+          "markers": [
+            {
+              "file": "biome.json"
+            },
+            {
+              "file": "biome.jsonc"
+            }
+          ],
+          "hooks": [
+            "biome"
+          ],
+          "format_rule": {
+            "extensions": [
+              ".ts",
+              ".html",
+              ".css",
+              ".json"
+            ],
+            "command": [
+              "biome",
+              "format",
+              "--write",
+              "{file}"
+            ]
+          }
+        },
+        {
+          "name": "dprint",
+          "markers": [
+            {
+              "file": "dprint.json"
+            },
+            {
+              "file": ".dprint.json"
+            }
+          ],
+          "hooks": [
+            "dprint"
+          ]
+        }
+      ]
+    },
+    {
+      "concern": "package-manager",
+      "kit": {
+        "name": "npm",
+        "markers": [
+          {
+            "file": "package-lock.json"
+          }
+        ],
+        "commands": [
+          "install",
+          "dev",
+          "test",
+          "build",
+          "verify"
+        ],
+        "permissions": [
+          "Bash(npm ci)",
+          "Bash(npm test*)",
+          "Bash(npm run build*)",
+          "Bash(npm run lint*)"
+        ],
+        "practice_terms": [
+          "npm ci",
+          "package-lock.json"
+        ]
+      },
+      "alternatives": [
+        {
+          "name": "pnpm",
+          "markers": [
+            {
+              "file": "pnpm-lock.yaml"
+            }
+          ],
+          "hooks": [
+            "pnpm"
+          ],
+          "commands": {
+            "install": "pnpm install --frozen-lockfile",
+            "dev": "pnpm start",
+            "test": "pnpm test --watch=false",
+            "build": "pnpm run build",
+            "verify": "pnpm test --watch=false && pnpm run build"
+          },
+          "permissions_allow": [
+            "Bash(pnpm install*)",
+            "Bash(pnpm test*)",
+            "Bash(pnpm run build*)",
+            "Bash(pnpm run lint*)"
+          ]
+        },
+        {
+          "name": "yarn",
+          "markers": [
+            {
+              "file": "yarn.lock"
+            }
+          ],
+          "hooks": [
+            "yarn"
+          ]
+        },
+        {
+          "name": "bun",
+          "markers": [
+            {
+              "file": "bun.lock"
+            },
+            {
+              "file": "bun.lockb"
+            }
+          ],
+          "hooks": [
+            "bun"
+          ]
+        }
+      ]
+    }
+  ],
   "sources": [
     "https://angular.dev/style-guide",
     "https://angular.dev/tools/cli",
