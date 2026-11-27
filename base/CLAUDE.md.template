@@ -20,10 +20,13 @@
 {{GOTCHAS}}
 
 ## Mandatory Rules
-- Never write to a `.env` file or commit secrets.
-- Never force-push or bulk-delete files without explicit confirmation.
-- Run the verification command before declaring a task complete.
-- If a rule in this file contradicts the existing code, flag it instead of guessing.{{ORG_RULES}}
+- **Design (SOLID / DRY)**: keep functions focused on one responsibility, inject dependencies instead of hidden global state, and reuse/extract shared logic instead of duplicating it.
+- **Boundaries & Errors**: validate external inputs (API, CLI, env, files) at boundaries; fail explicitly with clear errors and never swallow exceptions silently.
+- **Database (ACID)**: wrap multi-step writes in transactions, use parameterized queries, and ship reversible schema migrations.
+- **Security**: never write to `.env` or commit secrets; enforce auth and least-privilege checks server-side.
+- **Testing**: run the verification command before declaring a task complete; cover new behavior and bug fixes with deterministic tests.
+- **Git & CI/CD**: keep commits focused, commit lockfiles, never force-push or bulk-delete without explicit confirmation, and keep CI reproducible.
+- **Consistency**: if a rule in this file contradicts the existing code, flag it instead of guessing.{{ORG_RULES}}
 
 ## Lessons Learned
 <!-- Add 1 to 3 lines here per non-obvious gotcha discovered (observation / why / rule). -->

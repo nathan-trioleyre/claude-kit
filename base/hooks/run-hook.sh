@@ -1,10 +1,11 @@
 #!/bin/sh
-# claude-kit-hook-version: 2
+# claude-kit-hook-version: 3
 # Portable Python 3 hook launcher for Claude Code (Linux, macOS, Windows Git Bash).
 # Invoked via: HOOK_SCRIPT=guard.py; . "$CLAUDE_PROJECT_DIR/.claude/hooks/run-hook.sh"
 
 _hook_script="${HOOK_SCRIPT:-$1}"
-_hook_target="$CLAUDE_PROJECT_DIR/.claude/hooks/$_hook_script"
+_proj_dir="${CLAUDE_PROJECT_DIR:-.}"
+_hook_target="$_proj_dir/.claude/hooks/$_hook_script"
 
 _can_run_python() {
     [ -n "$1" ] && [ -x "$1" ] && "$1" -c "import sys" >/dev/null 2>&1
