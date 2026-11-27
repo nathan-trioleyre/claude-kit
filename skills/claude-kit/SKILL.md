@@ -21,7 +21,7 @@ Only write into the project through `apply.py`, except when merging a user-appro
 - empty: full setup, Steps 0 to 6 below.
 - `local`: full setup in stealth/personal mode for shared team repositories (pass `--local` to `APPLY apply`). Writes `CLAUDE.local.md` and `.claude/settings.local.json`, records exclusions in `.git/info/exclude`, and never touches `.gitignore`, team `CLAUDE.md`, or team `.claude/settings.json`. Later `sync` and `doctor` remember this mode automatically.
 - `doctor`: Step 0, then run `APPLY doctor --project .` and explain each `ISSUE` in plain English. Then propose the right fix: `sync` for outdated hooks/settings, a full `/claude-kit` for new stacks or refreshed profiles, Step 3b for a `tooling conflict`, and Step 3b (option "adopt the kit") to finish a migration reported as `finish the migration`. Write nothing yourself.
-- `sync`: Step 0, then `APPLY sync --project . --dry-run`, summarize, ask for confirmation, re-run without `--dry-run`. This refreshes kit-managed files only (settings, hooks, agents/commands, `.mcp.json`, `kit.json`); `CLAUDE.md` is not touched. Recorded tooling decisions are respected; a new undecided conflict is reported (`! CONFLICT`): resolve it with Step 3b (`APPLY decide`, then `sync`). If a hook is reported `skipped ... modified locally`, show the diff against the kit's copy and ask before using `--force-hooks`.
+- `sync`: Step 0, then `APPLY sync --project . --dry-run`, summarize, ask for confirmation, re-run without `--dry-run`. This refreshes kit-managed files only (settings, hooks, agents/commands/rules/skills, `.mcp.json`, `kit.json`); `CLAUDE.md` is not touched. Recorded tooling decisions are respected; a new undecided conflict is reported (`! CONFLICT`): resolve it with Step 3b (`APPLY decide`, then `sync`). If a hook is reported `skipped ... modified locally`, show the diff against the kit's copy and ask before using `--force-hooks`.
 
 ## Step 0: locate the kit
 
@@ -40,7 +40,7 @@ Hereafter:
 2. Check if a `CLAUDE.md` or `.claude/` directory already exists: they must be respected, never overwritten.
 3. Run `APPLY detect --project .` to see which known profiles match (scans up to depth 5 while pruning `node_modules`/`.venv`/etc.). It also returns `details` with the directories and suggested `rule_paths` globs for each matched stack.
 4. List **all** stacks in the project (an Angular + C# monorepo has two), including those without a profile yet.
-5. Note the project's **actual commands** (`package.json` scripts, `Makefile`, CI) and subproject directories for monorepos. Project commands take precedence over profile defaults.
+5. Note the project's **actual commands** (`package.json` scripts, `Makefile`, CI), subproject directories for monorepos, and **exact stack versions** (e.g., `@angular/core` or `next` in `package.json`, `<TargetFramework>` in `*.csproj`, `requires-python` in `pyproject.toml`). Project commands take precedence over profile defaults.
 
 ## Step 1b: audit what already exists (read-only)
 
@@ -55,7 +55,7 @@ If the project has nothing of its own (`existing` empty, no `tooling` entries), 
 
 Run `APPLY list`, then for each stack in the project:
 
-- **Existing and recent profile** (`stale: false`): use it as-is without re-researching.
+- **Existing and recent profile** (`stale: false`): use it as-is without re-researching. If the project uses a specific major version and `KIT/profiles/<stack>/versions/<major>.md` does not exist yet, check official docs for that version, write `versions/<major>.md` (8 lines max, version-specific rules only), validate with `APPLY validate --profiles <stack>`, and wait for user approval before saving.
 - **Existing but stale profile** (`stale: true`, older than 90 days, which also covers starter profiles shipped unverified): tell the user and offer to refresh it now (`/claude-kit-refresh` procedure) or continue with the old one.
 - **No profile**: create it.
   1. Search official documentation using `WebSearch` and `WebFetch` for **current** best practices (language, framework, tools). Tailor to what the project actually uses (e.g., `uv` or `poetry`, framework version read from the manifest).
@@ -78,6 +78,7 @@ Build the context JSON object:
   "architecture": "5 to 10 markdown lines: entry point, main folders, data flow",
   "gotchas": "only real gotchas observed in the code or config",
   "commands_override": { "<stack>": { "test": "actual project command" } },
+  "stack_versions": { "<stack>": "11.2" },
   "rule_paths": { "<stack>": ["apps/api/**"] },
   "decisions": { "<stack>": { "<concern>": "keep_existing | adopt_kit | keep_both" } }
 }
@@ -87,7 +88,7 @@ Build the context JSON object:
 - Only fill in what you actually read in the code. If you don't know, omit the key: the script inserts `_To be completed._`. Never guess or invent.
 - Include `"rule_paths"` only for multi-stack monorepos when you want stack practices written into path-scoped `.claude/rules/<stack>.md` files instead of inline in `CLAUDE.md` (you can use the globs suggested by `APPLY detect` in `details`).
 - Optional `"stop_verify": true` enables the deterministic `Stop` hook (`verify-stop.py`) for the project so Claude cannot finish a turn while the project's `verify_command` fails.
-- The kit may also contain an optional `org/` layer (company-wide rules, permissions, MCP servers, agents, commands, see `org/README.md`). `apply.py` applies it automatically; do not duplicate its content in the context JSON.
+- The kit may also contain an optional `org/` layer (company-wide rules, permissions, MCP servers, agents, commands, modular rules, skills, see `org/README.md`). `apply.py` applies it automatically; do not duplicate its content in the context JSON.
 - Pass the JSON via stdin using `--context -` (preferred, leaves no temp file) or a temp file outside the project.
 
 ## Step 3b: settle each conflict with the user

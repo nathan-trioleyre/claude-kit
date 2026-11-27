@@ -12,7 +12,7 @@ Do Step 0 of `/claude-kit` (`Read` `~/.claude/claude-kit.json` for `kit_path` = 
 
 ## Step 1: collect candidates
 
-1. Read the project's `CLAUDE.md` ("Lessons Learned" and "Known Gotchas") and `.claude/rules/*.md`.
+1. Read the project's `CLAUDE.md` (and `CLAUDE.local.md` if present — look at "Lessons Learned" and "Known Gotchas") and `.claude/rules/*.md`.
 2. Read `.claude/kit.json` to know which profiles the project uses.
 3. Keep only lessons that are **general to a stack or to all projects** (a framework pitfall, a tooling flag, a safety rule). Discard anything specific to this codebase (names, paths, business rules).
 
@@ -20,7 +20,8 @@ Do Step 0 of `/claude-kit` (`Read` `~/.claude/claude-kit.json` for `kit_path` = 
 
 | Scope | Destination |
 |---|---|
-| One stack | `KIT/profiles/<stack>/practices.md` (15 non-empty lines max: propose which line to drop if full) |
+| One stack (timeless) | `KIT/profiles/<stack>/practices.md` (15 non-empty lines max: propose which line to drop if full) |
+| One stack (version-specific) | `KIT/profiles/<stack>/versions/<major>.md` (8 non-empty lines max) |
 | Every project of the user's company | `KIT/org/rules.md` |
 | Every project, safety or workflow | `KIT/base/CLAUDE.md.template` (propose the exact edit, never apply silently) |
 

@@ -7,10 +7,10 @@ A personal kit that prepares Claude Code for any project (Python, C#, Angular, T
 When you land on a project, `/claude-kit`:
 
 1. **inspects** the project to understand its stack;
-2. **checks** `profiles/` to see if the stack is already known;
-   - yes → reuses the profile without re-researching;
-   - no → reads official documentation, validates and shows the proposed profile, then **saves it into this repository after your approval**;
-3. **generates** a `CLAUDE.md` (plus optional path-scoped `.claude/rules/<stack>.md`), permissions, agents, skills, and hooks (safety + formatting) without ever overwriting existing files.
+2. **checks** `profiles/` to see if the stack (and its detected major version in `versions/`) is already known;
+   - yes → reuses the profile (and version rules) without re-researching;
+   - no → reads official documentation, validates and shows the proposed profile (or `versions/<major>.md`), then **saves it into this repository after your approval**;
+3. **generates** a `CLAUDE.md` (plus optional path-scoped `.claude/rules/<stack>.md`), permissions, and hooks (safety + formatting) without ever overwriting existing files.
 
 Afterwards, the kit keeps projects aligned:
 
@@ -43,8 +43,8 @@ Each layer only **adds** to the previous one. See [org/README.md](org/README.md)
 In each configured project, the kit aligns with the **5 Claude Code layers**:
 1. **`CLAUDE.md`**: identity, commands, architecture, and gotchas (< 200 lines, `@file` imports supported).
 2. **`.claude/rules/*.md`**: modular rules scoped by `paths` (monorepos, `base/rules/`, `org/rules/`).
-3. **`.claude/skills/`** (and `commands/`): on-demand reusable workflows (`/verify` and `/wrap-up` shipped in `base/skills/`).
-4. **`.claude/agents/`**: isolated subagents (e.g., read-only `code-reviewer` to review diffs without implementation bias).
+3. **`.claude/skills/`** (and `commands/`): optional on-demand workflows from `base/` or `org/`.
+4. **`.claude/agents/`**: optional isolated subagents from `base/` or `org/`.
 5. **Hooks (`.claude/settings.json`)**: deterministic guardrails (`SessionStart` with `session-check.py`, `PreToolUse` with `guard.py`, `PostToolUse` with `format.py`, and opt-in `Stop` with `verify-stop.py` via `"stop_verify": true` in `.claude/kit.json`).
 
 ## Division of labor
@@ -80,9 +80,7 @@ claude-kit/
 │   ├── CLAUDE.md.template      CLAUDE.md skeleton
 │   ├── settings.base.json      hardened permissions + hook wiring
 │   ├── hooks/                  run-hook.sh, guard.py, format.py, session-check.py, verify-stop.py
-│   ├── agents/                 code-reviewer.md (copied into each project)
-│   ├── skills/                 verify/SKILL.md, wrap-up/SKILL.md (copied into each project)
-│   └── commands/  rules/       optional: copied into each project
+│   └── agents/ commands/ rules/ skills/   optional: copied into each project if present
 ├── org/                        optional company layer (rules, permissions, MCP, agents, commands, skills)
 ├── profiles/                   one folder per stack
 │   ├── python/ csharp-dotnet/ angular/ typescript/ nextjs/ docker/ rust/   built-in profiles

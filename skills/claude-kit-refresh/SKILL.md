@@ -22,7 +22,7 @@ Do Step 0 of `/claude-kit`: `Read` `~/.claude/claude-kit.json` to get `kit_path`
 
 For each targeted profile:
 
-1. Read `KIT/profiles/<stack>/profile.json` and `practices.md`.
+1. Read `KIT/profiles/<stack>/profile.json`, `practices.md`, and any `versions/*.md` files.
 2. Open each URL in `sources` with `WebFetch` and run at least one targeted `WebSearch` for recent changes: new major version, deprecated or replaced tool, changed command or flag, or new practice recommended by official documentation.
 3. Compare against the profile. Only keep **sourced** findings: if you cannot find reliable confirmation, do not change anything.
 
@@ -46,5 +46,5 @@ Wait for approval (the user may accept only part of the changes). Then apply the
 ## Rules
 
 - Official sources first; a blog post alone is not enough to change a rule.
-- `practices.md` stays at 15 lines maximum: if you add lines, propose which ones to remove.
+- `practices.md` stays at 15 lines maximum (and each `versions/*.md` at 8 lines maximum): if you add lines, propose which ones to remove.
 - Do not touch profiles other than the targeted ones.

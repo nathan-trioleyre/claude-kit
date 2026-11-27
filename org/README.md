@@ -1,19 +1,19 @@
-# org/ — couche entreprise optionnelle
+# org/ — optional company layer
 
-Tout ce qui est ici s'applique à **chaque** projet configuré avec le kit, entre `base/` et les profils de stack.
-La couche est additive : elle peut ajouter des règles, des permissions et des fichiers, jamais retirer ce que `base/` ou le projet ont déjà.
-Supprime les fichiers dont tu n'as pas besoin ; un `org/` vide ne fait rien.
+Everything here applies to **every** project configured with the kit, between `base/` and stack profiles.
+This layer is additive: it can add rules, permissions, and files, never remove what `base/` or the project already have.
+Delete the files you don't need; an empty `org/` does nothing.
 
-| Fichier / dossier | Effet dans le projet |
+| File / folder | Effect in the project |
 |---|---|
-| `rules.md` | Ajouté à la section « Mandatory Rules » de `CLAUDE.md` (lignes à puces markdown simples). |
-| `settings.json` | `permissions.allow` / `permissions.deny` et `hooks` supplémentaires, fusionnés dans `.claude/settings.json`. Même structure que `base/settings.base.json`. |
-| `mcp.json` | `{"mcpServers": {...}}`, fusionné dans le `.mcp.json` du projet. Les noms de serveurs existants ne sont jamais écrasés. N'y mets jamais de secrets : utilise des références `${ENV_VAR}`. |
-| `agents/*.md` | Copiés dans `.claude/agents/` (sous-agents), sans écraser. |
-| `commands/*.md` | Copiées dans `.claude/commands/` (commandes slash), sans écraser. |
-| `rules/*.md` | Copiées dans `.claude/rules/` (règles modulaires scopées par `paths`), sans écraser. |
-| `skills/<nom>/SKILL.md` | Copiés dans `.claude/skills/<nom>/` (workflows réutilisables à la demande), sans écraser. |
+| `rules.md` | Appended to the "Mandatory Rules" section of `CLAUDE.md` (plain markdown bullet lines). |
+| `settings.json` | Extra `permissions.allow` / `permissions.deny` and `hooks`, merged into `.claude/settings.json`. Same schema as `base/settings.base.json`. |
+| `mcp.json` | `{"mcpServers": {...}}`, merged into the project's `.mcp.json`. Existing server names are never overwritten. Never put secrets here: use `${ENV_VAR}` references. |
+| `agents/*.md` | Copied into `.claude/agents/` (subagents), without overwriting. |
+| `commands/*.md` | Copied into `.claude/commands/` (slash commands), without overwriting. |
+| `rules/*.md` | Copied into `.claude/rules/` (path-scoped modular rules), without overwriting. |
+| `skills/<name>/SKILL.md` | Copied into `.claude/skills/<name>/` (on-demand workflows), without overwriting. |
 
-`base/agents/`, `base/commands/`, `base/rules/` et `base/skills/` fonctionnent de la même façon pour ce qui appartient à tous les projets, quelle que soit l'entreprise.
+`base/agents/`, `base/commands/`, `base/rules/`, and `base/skills/` work the exact same way for items shared across all projects regardless of company.
 
-Applique-les aux projets avec `/claude-kit` (première fois) ou `/claude-kit sync` (ensuite). Ignore la couche avec `--no-org`.
+Apply changes to projects with `/claude-kit` (initial setup) or `/claude-kit sync` (afterwards). Skip this layer with `--no-org`.
