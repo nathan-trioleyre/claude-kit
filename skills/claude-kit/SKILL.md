@@ -87,7 +87,7 @@ Build the context JSON object:
 - `decisions`: the answers from Step 3b, only for concerns the audit listed.
 - Only fill in what you actually read in the code. If you don't know, omit the key: the script inserts `_To be completed._`. Never guess or invent.
 - Include `"rule_paths"` only for multi-stack monorepos when you want stack practices written into path-scoped `.claude/rules/<stack>.md` files instead of inline in `CLAUDE.md` (you can use the globs suggested by `APPLY detect` in `details`).
-- Optional `"stop_verify": true` enables the deterministic `Stop` hook (`verify-stop.py`) for the project so Claude cannot finish a turn while the project's `verify_command` fails.
+- Optional `"stop_verify": false` disables the deterministic `Stop` hook (`verify-stop.py`) for documentation-only or slow repositories (it is enabled by default whenever `verify_command` is non-empty).
 - The kit may also contain an optional `org/` layer (company-wide rules, permissions, MCP servers, agents, commands, modular rules, skills, see `org/README.md`). `apply.py` applies it automatically; do not duplicate its content in the context JSON.
 - Pass the JSON via stdin using `--context -` (preferred, leaves no temp file) or a temp file outside the project.
 

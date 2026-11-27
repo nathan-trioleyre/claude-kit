@@ -1,0 +1,13 @@
+# Project Memory
+
+<!-- Lightweight inter-session state index (< 150 lines, < 150 chars per entry).
+     Promote durable invariants (> 30 days or recurring) to CLAUDE.md via /claude-kit-learn. -->
+
+## Decisions
+<!-- Format: - [YYYY-MM-DD] Decision + short pointer -->
+
+## Active WIP
+<!-- Format: - [YYYY-MM-DD] Current work / branch / next step -->
+
+## Known Issues
+<!-- Format: - [YYYY-MM-DD] Issue + workaround or pointer -->

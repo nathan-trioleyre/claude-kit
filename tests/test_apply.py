@@ -446,6 +446,49 @@ class TestApply(unittest.TestCase):
             self.assertTrue((proj2 / ".mcp.json").is_file())
             self.assertIn(".mcp.json", (proj2 / ".git" / "info" / "exclude").read_text(encoding="utf-8"))
 
+    def test_memory_md_stop_verify_default_and_doctor_audits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, apply_bin, proj = self._kit_and_project(tmp)
+            ctx = json.dumps({
+                "name": "Demo",
+                "description": "Demo app",
+                "architecture": "- src/",
+                "gotchas": "- None",
+            })
+            run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python", "--context", "-", input=ctx)
+
+            # MEMORY.md created with expected sections, stop_verify enabled by default
+            mem = proj / "MEMORY.md"
+            self.assertTrue(mem.is_file())
+            mem_text = mem.read_text(encoding="utf-8")
+            self.assertIn("## Decisions", mem_text)
+            self.assertIn("## Active WIP", mem_text)
+            self.assertIn("## Known Issues", mem_text)
+            kj = json.loads((proj / ".claude" / "kit.json").read_text(encoding="utf-8"))
+            self.assertTrue(kj["stop_verify"])
+
+            # Existing MEMORY.md is never overwritten on re-run
+            mem.write_text("# Project Memory\n- [2020-01-01] old decision\n" + "\n".join(f"- line {i}" for i in range(155)), encoding="utf-8")
+            run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python", "--context", "-", input=json.dumps({"stop_verify": False}))
+            self.assertFalse((proj / "MEMORY.md.proposed").exists())
+            kj2 = json.loads((proj / ".claude" / "kit.json").read_text(encoding="utf-8"))
+            self.assertFalse(kj2["stop_verify"])
+
+            # CLAUDE.md > 80 lines and harness.log >= 4 blocks flagged by doctor
+            (proj / "CLAUDE.md").write_text("# Demo\n" + "\n".join(f"- rule {i}" for i in range(85)) + "\n", encoding="utf-8")
+            log_dir = proj / ".claude" / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            (log_dir / "harness.log").write_text(
+                "\n".join(json.dumps({"hook": "guard", "tool": "Bash", "target": "sudo x", "reason": "sudo is not allowed."}) for _ in range(4)) + "\n",
+                encoding="utf-8",
+            )
+            doc = run_apply(apply_bin, "doctor", "--project", str(proj), check=False)
+            self.assertEqual(doc.returncode, 1)
+            self.assertIn("recommended <= 80", doc.stdout)
+            self.assertIn("warning threshold 150", doc.stdout)
+            self.assertIn("older than 30 days", doc.stdout)
+            self.assertIn("harness.log shows 4x blocks", doc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

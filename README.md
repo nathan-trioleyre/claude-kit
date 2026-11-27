@@ -41,11 +41,11 @@ Conflict detection is driven by the optional `tooling` section in each profile (
 Each layer only **adds** to the previous one. See [org/README.md](org/README.md) for the company layer (shared rules, permissions, MCP servers, agents, commands, modular rules, skills).
 
 In each configured project, the kit aligns with the **5 Claude Code layers**:
-1. **`CLAUDE.md`**: identity, commands, architecture, and gotchas (< 200 lines, `@file` imports supported).
+1. **`CLAUDE.md` & `MEMORY.md`**: `CLAUDE.md` for invariants, commands, architecture, and gotchas (≤ 80 lines, 40–60 sweet spot; `@file` imports supported), plus `MEMORY.md` as a lightweight inter-session state index (≤ 150 lines).
 2. **`.claude/rules/*.md`**: modular rules scoped by `paths` (monorepos, `base/rules/`, `org/rules/`).
 3. **`.claude/skills/`** (and `commands/`): optional on-demand workflows from `base/` or `org/`.
 4. **`.claude/agents/`**: optional isolated subagents from `base/` or `org/`.
-5. **Hooks (`.claude/settings.json`)**: deterministic guardrails (`SessionStart` with `session-check.py`, `PreToolUse` with `guard.py`, `PostToolUse` with `format.py`, and opt-in `Stop` with `verify-stop.py` via `"stop_verify": true` in `.claude/kit.json`).
+5. **Hooks (`.claude/settings.json`) & Observability**: deterministic guardrails (`SessionStart` with `session-check.py` including `~/.npmrc` supply-chain checks, `PreToolUse` with `guard.py`, `PostToolUse` with `format.py`, and `Stop` with `verify-stop.py` active by default whenever `verify_command` is set — opt-out via `"stop_verify": false` in `.claude/kit.json`). Hook blocks are logged to `.claude/logs/harness.log` and audited by `/claude-kit doctor` and `/claude-kit-learn`.
 
 ## Division of labor
 
@@ -78,6 +78,7 @@ claude-kit/
 ├── install.py                  installs skills (copy or --link) + records kit and Python paths
 ├── base/                       shared across ALL projects
 │   ├── CLAUDE.md.template      CLAUDE.md skeleton
+│   ├── MEMORY.md.template      MEMORY.md inter-session state skeleton
 │   ├── settings.base.json      hardened permissions + hook wiring
 │   ├── hooks/                  run-hook.sh, guard.py, format.py, session-check.py, verify-stop.py
 │   └── agents/ commands/ rules/ skills/   optional: copied into each project if present

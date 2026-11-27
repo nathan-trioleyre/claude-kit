@@ -60,6 +60,10 @@ class TestHookLauncher(unittest.TestCase):
     def _find_sh() -> str | None:
         import shutil
         candidates = [str(Path(r"C:\Program Files\Git\bin\sh.exe")), shutil.which("sh")]
+        git_bin = shutil.which("git")
+        if git_bin:
+            git_root = Path(git_bin).resolve().parent.parent
+            candidates.extend([str(git_root / "bin" / "sh.exe"), str(git_root / "usr" / "bin" / "sh.exe")])
         for cand in candidates:
             if not cand or not Path(cand).is_file():
                 continue
@@ -350,6 +354,103 @@ class TestSessionAndStopHooks(unittest.TestCase):
             }), encoding="utf-8")
             r_ok = subprocess.run([sys.executable, str(stop_hook)], input="{}", env=env, capture_output=True, text=True)
             self.assertEqual(r_ok.returncode, 0)
+
+            # verify-stop logged the earlier failure to .claude/logs/harness.log
+            log_file = proj / ".claude" / "logs" / "harness.log"
+            self.assertTrue(log_file.is_file())
+            entries = [json.loads(line) for line in log_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+            self.assertEqual(len(entries), 1)
+            self.assertEqual(entries[0]["hook"], "verify-stop")
+
+    def test_guard_logs_blocks_and_session_check_audits_npmrc(self):
+        session_hook = KIT / "base" / "hooks" / "session-check.py"
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            proj = t / "proj"
+            (proj / ".claude").mkdir(parents=True)
+            home = t / "home"
+            home.mkdir()
+            env = {**os.environ, "CLAUDE_PROJECT_DIR": str(proj), "HOME": str(home), "USERPROFILE": str(home)}
+
+            # guard.py logs block to .claude/logs/harness.log
+            r_guard = subprocess.run(
+                [sys.executable, str(GUARD)],
+                input=json.dumps({"tool_name": "Bash", "tool_input": {"command": "sudo apt update"}}),
+                env=env, capture_output=True, text=True,
+            )
+            self.assertEqual(r_guard.returncode, 2)
+            log_file = proj / ".claude" / "logs" / "harness.log"
+            self.assertTrue(log_file.is_file())
+            entry = json.loads(log_file.read_text(encoding="utf-8").strip())
+            self.assertEqual(entry["hook"], "guard")
+            self.assertEqual(entry["tool"], "Bash")
+
+            # session-check warns when Node/TS profile is configured and ~/.npmrc lacks hardening
+            (proj / ".claude" / "kit.json").write_text(json.dumps({
+                "profiles": {"typescript": {"last_verified": "2026-11-27"}}
+            }), encoding="utf-8")
+            r_sess = subprocess.run([sys.executable, str(session_hook)], input="{}", env=env, capture_output=True, text=True)
+            self.assertEqual(r_sess.returncode, 0)
+            self.assertIn("ignore-scripts=true", r_sess.stdout)
+            self.assertIn("save-exact=true", r_sess.stdout)
+
+            # Once ~/.npmrc has both settings, warning disappears
+            (home / ".npmrc").write_text("ignore-scripts=true\nsave-exact=true\n", encoding="utf-8")
+            r_sess_ok = subprocess.run([sys.executable, str(session_hook)], input="{}", env=env, capture_output=True, text=True)
+            self.assertEqual(r_sess_ok.returncode, 0)
+            self.assertEqual(r_sess_ok.stdout.strip(), "")
+
+    def test_guard_supply_chain_and_verify_stop_session_usage(self):
+        stop_hook = KIT / "base" / "hooks" / "verify-stop.py"
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            proj = t / "proj"
+            (proj / ".claude").mkdir(parents=True)
+            home = t / "home"
+            home.mkdir()
+            env = {**os.environ, "CLAUDE_PROJECT_DIR": str(proj), "HOME": str(home), "USERPROFILE": str(home)}
+
+            # Raw pip install and unhardened npm install <pkg> are blocked
+            for cmd in ("pip install evil-pkg", "python -m pip install evil-pkg", "npm install evil-pkg"):
+                r = subprocess.run([sys.executable, str(GUARD)],
+                                   input=json.dumps({"tool_name": "Bash", "tool_input": {"command": cmd}}),
+                                   env=env, capture_output=True, text=True)
+                self.assertEqual(r.returncode, 2, cmd)
+
+            # uv add, npm ci, and npm install --ignore-scripts are allowed
+            for cmd in ("uv add ruff", "npm ci", "npm install evil-pkg --ignore-scripts"):
+                r = subprocess.run([sys.executable, str(GUARD)],
+                                   input=json.dumps({"tool_name": "Bash", "tool_input": {"command": cmd}}),
+                                   env=env, capture_output=True, text=True)
+                self.assertEqual(r.returncode, 0, f"{cmd}: {r.stderr}")
+
+            # Hardened ~/.npmrc allows npm install <pkg>
+            (home / ".npmrc").write_text("ignore-scripts=true\n", encoding="utf-8")
+            r_npm_ok = subprocess.run([sys.executable, str(GUARD)],
+                                      input=json.dumps({"tool_name": "Bash", "tool_input": {"command": "npm install zod"}}),
+                                      env=env, capture_output=True, text=True)
+            self.assertEqual(r_npm_ok.returncode, 0, r_npm_ok.stderr)
+
+            # verify-stop records token/cost metrics from transcript_path
+            transcript = t / "sess-1.jsonl"
+            transcript.write_text(
+                json.dumps({"message": {"usage": {"input_tokens": 1200, "output_tokens": 300}}, "costUSD": 0.012}) + "\n",
+                encoding="utf-8",
+            )
+            (proj / ".claude" / "kit.json").write_text(json.dumps({"stop_verify": False}), encoding="utf-8")
+            r_stop = subprocess.run(
+                [sys.executable, str(stop_hook)],
+                input=json.dumps({"session_id": "sess-1", "transcript_path": str(transcript)}),
+                env=env, capture_output=True, text=True,
+            )
+            self.assertEqual(r_stop.returncode, 0)
+            sessions_file = proj / ".claude" / "logs" / "sessions.jsonl"
+            self.assertTrue(sessions_file.is_file())
+            rec = json.loads(sessions_file.read_text(encoding="utf-8").strip())
+            self.assertEqual(rec["session_id"], "sess-1")
+            self.assertEqual(rec["input_tokens"], 1200)
+            self.assertEqual(rec["output_tokens"], 300)
+            self.assertAlmostEqual(rec["cost_usd"], 0.012)
 
 
 if __name__ == "__main__":

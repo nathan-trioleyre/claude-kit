@@ -1,13 +1,37 @@
 #!/usr/bin/env python3
 """SessionStart hook: injects a concise one-line status if the project has pending kit actions.
-# claude-kit-hook-version: 2
+# claude-kit-hook-version: 3
 
 Fast and read-only: never modifies files, never blocks (always exits 0).
 """
 import json
 import os
+import re
 import sys
 from pathlib import Path
+
+NODE_PROFILES = {"typescript", "nextjs", "angular", "javascript", "node", "react", "vue"}
+
+
+def check_npmrc_supply_chain(kit_data: dict) -> str | None:
+    profiles = set(kit_data.get("profiles", {}))
+    if not (profiles & NODE_PROFILES):
+        return None
+    npmrc = Path.home() / ".npmrc"
+    text = ""
+    try:
+        if npmrc.is_file():
+            text = npmrc.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return None
+    missing = []
+    if not re.search(r"(?im)^\s*ignore-scripts\s*=\s*true\s*$", text):
+        missing.append("ignore-scripts=true")
+    if not re.search(r"(?im)^\s*save-exact\s*=\s*true\s*$", text):
+        missing.append("save-exact=true")
+    if missing:
+        return f"~/.npmrc missing {', '.join(missing)} (supply-chain hardening)"
+    return None
 
 
 def main() -> None:
@@ -39,6 +63,9 @@ def main() -> None:
         ]
         if pending:
             notes.append(f"unresolved tooling conflicts ({', '.join(pending)})")
+        npm_note = check_npmrc_supply_chain(kit_data)
+        if npm_note:
+            notes.append(npm_note)
     except Exception:
         pass
 

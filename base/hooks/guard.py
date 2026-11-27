@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """PreToolUse hook: blocks destructive actions BEFORE they execute.
-# claude-kit-hook-version: 2
+# claude-kit-hook-version: 4
 
 Claude Code passes JSON on stdin (tool name + tool parameters).
 Exiting with code 2 blocks the action and sends stderr back to Claude.
@@ -9,7 +9,9 @@ Code 0 allows the action to proceed.
 WARNING: this is a safety net against accidents, not a security boundary.
 `deny` rules in settings.json and an isolated environment remain more reliable.
 """
+from datetime import datetime, timezone
 import json
+import os
 import re
 import shlex
 import sys
@@ -39,7 +41,30 @@ READER_CMDS = {
 MAX_SHELL_DEPTH = 3
 
 
-def block(message: str) -> None:
+def log_block(payload: dict, tool: str, target: str, reason: str) -> None:
+    try:
+        project = Path(os.environ.get("CLAUDE_PROJECT_DIR") or payload.get("cwd") or ".")
+        claude_dir = project / ".claude"
+        if not claude_dir.is_dir():
+            return
+        log_dir = claude_dir / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "hook": "guard",
+            "tool": tool,
+            "target": target[:200],
+            "reason": reason,
+        }
+        with (log_dir / "harness.log").open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def block(message: str, payload: dict | None = None, tool: str = "", target: str = "") -> None:
+    if payload is not None:
+        log_block(payload, tool, target, message)
     print(f"BLOCKED: {message}", file=sys.stderr)
     sys.exit(2)
 
@@ -167,6 +192,36 @@ def _check_secret_access(tokens: list, segment: str) -> str | None:
     return None
 
 
+def _npmrc_has_ignore_scripts() -> bool:
+    try:
+        npmrc = Path.home() / ".npmrc"
+        if not npmrc.is_file():
+            return False
+        text = npmrc.read_text(encoding="utf-8", errors="ignore")
+        return bool(re.search(r"(?im)^\s*ignore-scripts\s*=\s*true\s*$", text))
+    except OSError:
+        return False
+
+
+def _check_supply_chain(tokens: list) -> str | None:
+    if not tokens:
+        return None
+    cmd = _cmd_name(tokens[0])
+    # Block raw pip install / pip3 install / python -m pip install (runs setup.py)
+    if cmd in {"pip", "pip3"} and len(tokens) > 1 and tokens[1].lower() == "install":
+        return "raw pip install executes arbitrary setup.py scripts. Use 'uv add' / 'uv sync' instead."
+    if cmd in {"python", "python3", "py"} and len(tokens) >= 4:
+        if tokens[1] == "-m" and tokens[2].lower() == "pip" and tokens[3].lower() == "install":
+            return "raw python -m pip install executes arbitrary setup.py scripts. Use 'uv add' / 'uv sync' instead."
+    # Block `npm install <pkg>` when ignore-scripts is not set globally or via CLI flag
+    if cmd == "npm" and len(tokens) >= 2 and tokens[1].lower() in {"install", "i"}:
+        args = [t for t in tokens[2:] if not t.startswith("-")]
+        has_flag = any(t == "--ignore-scripts" for t in tokens[2:])
+        if args and not has_flag and not _npmrc_has_ignore_scripts():
+            return "npm install <pkg> without ignore-scripts can run malicious postinstall scripts. Add 'ignore-scripts=true' to ~/.npmrc or pass '--ignore-scripts'."
+    return None
+
+
 def _check_git_and_find(segment: str, tokens: list) -> str | None:
     if re.search(r"\bgit\s+branch\b[^|;&]*\s-D\b", segment):
         return "git branch -D deletes a branch irrecoverably. Ask for confirmation."
@@ -210,7 +265,7 @@ def check_bash_command(command: str, _depth: int = 0) -> str | None:
                 nested = check_bash_command(inline, _depth + 1)
                 if nested:
                     return nested
-        extra = _check_secret_access(posix_tokens, seg) or _check_git_and_find(seg, posix_tokens)
+        extra = _check_secret_access(posix_tokens, seg) or _check_git_and_find(seg, posix_tokens) or _check_supply_chain(posix_tokens)
         if extra:
             return extra
         rm_reason = _check_rm_segment(posix_tokens)
@@ -236,12 +291,14 @@ def main() -> None:
     if tool in ("Write", "Edit", "MultiEdit"):
         path = tool_input.get("file_path", "") or ""
         if is_protected_file(path):
-            block(f"writing to a protected file ({path}). Use the provider's environment variables instead.")
+            block(f"writing to a protected file ({path}). Use the provider's environment variables instead.",
+                  payload, tool, path)
 
     if tool == "Bash":
-        reason = check_bash_command(tool_input.get("command", "") or "")
+        cmd = tool_input.get("command", "") or ""
+        reason = check_bash_command(cmd)
         if reason:
-            block(reason)
+            block(reason, payload, tool, cmd)
 
     sys.exit(0)
 

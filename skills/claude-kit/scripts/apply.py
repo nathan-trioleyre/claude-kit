@@ -41,6 +41,10 @@ STALE_DAYS = 90
 MAX_DETECT_DEPTH = 5
 MAX_PRACTICES_LINES = 15
 MAX_VERSION_PRACTICES_LINES = 8
+MAX_CLAUDE_MD_LINES = 80
+MAX_MEMORY_MD_LINES = 150
+MEMORY_STALE_DAYS = 30
+HARNESS_RECURRING_THRESHOLD = 4
 IGNORED_DIRS = {
     "node_modules", ".git", ".venv", "venv", "bin", "obj",
     "dist", "__pycache__", ".claude", "target", ".next",
@@ -1066,8 +1070,13 @@ def write_kit_json(project: Path, profiles: list, previous: dict, managed: dict,
     for name in list(known):
         if name in effective:  # profiles deleted from the kit in the meantime are skipped
             format_rules.extend(effective[name].get("format_rules", []))
-    stop_verify = bool(ctx["stop_verify"]) if "stop_verify" in ctx else bool(previous.get("stop_verify", False))
     verify_cmd = resolve_verify_command(profiles, effective, ctx.get("commands_override", {}), previous, ctx, full=full)
+    if "stop_verify" in ctx:
+        stop_verify = bool(ctx["stop_verify"])
+    elif "stop_verify" in previous:
+        stop_verify = bool(previous["stop_verify"])
+    else:
+        stop_verify = bool(verify_cmd)
     kit_json = {
         "generated_by": "claude-kit",
         "kit_version": KIT_VERSION,
@@ -1138,6 +1147,7 @@ def run(project: Path, profile_names: list, ctx: dict, dry: bool, *, full: bool,
             report.append(f"! profile '{p['stack']}' is stale or unverified ({age_days(p)}d): consider /claude-kit-refresh {p['stack']}")
 
     rule_labels = []
+    mem_created = False
     effective_versions = {
         name: info["version"]
         for name, info in previous.get("profiles", {}).items()
@@ -1186,6 +1196,17 @@ def run(project: Path, profile_names: list, ctx: dict, dry: bool, *, full: bool,
                 write_non_destructive(project / label, label, render_rule_file(p, rule_paths, ver),
                                       dry, report, state=rendered_state)
 
+        # 2b. Inter-session state memory skeleton (never overwritten once created)
+        mem_template = BASE / "MEMORY.md.template"
+        mem_path = project / "MEMORY.md"
+        if mem_template.is_file():
+            if not mem_path.exists():
+                mem_created = True
+                write_text(mem_path, mem_template.read_text(encoding="utf-8"), dry)
+                report.append("created   MEMORY.md")
+            else:
+                report.append("unchanged MEMORY.md (kept existing)")
+
     # 3. settings.json or settings.local.json (additive merge + legacy kit hook upgrade)
     apply_settings(project, profiles, dry, report, use_org, local=is_local)
 
@@ -1200,9 +1221,11 @@ def run(project: Path, profile_names: list, ctx: dict, dry: bool, *, full: bool,
     if is_local:
         exclude_paths = [
             "CLAUDE.local.md", "CLAUDE.local.md.proposed",
-            ".claude/settings.local.json", ".claude/kit.json", ".claude/rules/*.proposed",
+            ".claude/settings.local.json", ".claude/kit.json", ".claude/logs/", ".claude/rules/*.proposed",
             *sorted(managed), *rule_labels,
         ]
+        if mem_created:
+            exclude_paths.append("MEMORY.md")
         if mcp_created:
             exclude_paths.append(".mcp.json")
         update_git_exclude(project, exclude_paths, dry, report)
@@ -1314,10 +1337,76 @@ def cmd_doctor(args) -> None:
     md_rel = "CLAUDE.local.md" if is_local else "CLAUDE.md"
     claude_md = project / md_rel
     if claude_md.is_file():
-        left = claude_md.read_text(encoding="utf-8").count(PLACEHOLDER)
+        claude_text = claude_md.read_text(encoding="utf-8")
+        left = claude_text.count(PLACEHOLDER)
         (issues if left else oks).append(f"{md_rel} has {left} section(s) still marked '{PLACEHOLDER}'" if left else f"{md_rel} fully filled")
+        claude_lines = len(claude_text.splitlines())
+        if claude_lines > MAX_CLAUDE_MD_LINES:
+            issues.append(f"{md_rel} has {claude_lines} lines (recommended <= {MAX_CLAUDE_MD_LINES}): move stack details to .claude/rules/*.md or @imports")
+        else:
+            oks.append(f"{md_rel} within budget ({claude_lines} lines)")
     else:
         issues.append(f"{md_rel} is missing")
+
+    mem_path = project / "MEMORY.md"
+    if mem_path.is_file():
+        mem_text = mem_path.read_text(encoding="utf-8")
+        mem_lines = len(mem_text.splitlines())
+        if mem_lines > MAX_MEMORY_MD_LINES:
+            issues.append(f"MEMORY.md has {mem_lines} lines (warning threshold {MAX_MEMORY_MD_LINES} before 200-line truncation): prune or promote via /claude-kit-learn")
+        old_entries = 0
+        today = date.today()
+        for raw_d in re.findall(r"\b(\d{4}-\d{2}-\d{2})\b", mem_text):
+            try:
+                if (today - date.fromisoformat(raw_d)).days > MEMORY_STALE_DAYS:
+                    old_entries += 1
+            except ValueError:
+                pass
+        if old_entries:
+            issues.append(f"MEMORY.md has {old_entries} entry(ies) older than {MEMORY_STALE_DAYS} days: promote durable rules to CLAUDE.md via /claude-kit-learn")
+        if mem_lines <= MAX_MEMORY_MD_LINES and not old_entries:
+            oks.append(f"MEMORY.md within budget ({mem_lines} lines)")
+    else:
+        issues.append("MEMORY.md is missing: re-run /claude-kit")
+
+    harness_log = project / ".claude" / "logs" / "harness.log"
+    if harness_log.is_file():
+        counts: dict[str, int] = {}
+        total_blocks = 0
+        for line in harness_log.read_text(encoding="utf-8", errors="ignore").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            total_blocks += 1
+            hook = entry.get("hook", "hook")
+            key = f"{hook}: {entry.get('target', '')}" if hook == "verify-stop" else f"{hook}: {entry.get('reason', '')}"
+            counts[key] = counts.get(key, 0) + 1
+        recurring = [(k, c) for k, c in counts.items() if c >= HARNESS_RECURRING_THRESHOLD]
+        for key, count in sorted(recurring, key=lambda x: -x[1]):
+            issues.append(f"harness.log shows {count}x blocks for '{key}': add an explicit rule + alternative in CLAUDE.md via /claude-kit-learn")
+        if not recurring and total_blocks:
+            oks.append(f"harness.log: {total_blocks} logged block(s), no recurring pattern (>={HARNESS_RECURRING_THRESHOLD})")
+
+    sessions_log = project / ".claude" / "logs" / "sessions.jsonl"
+    if sessions_log.is_file():
+        s_count, in_tok, out_tok = 0, 0, 0
+        for line in sessions_log.read_text(encoding="utf-8", errors="ignore").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            s_count += 1
+            in_tok += int(rec.get("input_tokens", 0) or 0)
+            out_tok += int(rec.get("output_tokens", 0) or 0)
+        if s_count:
+            oks.append(f"sessions.jsonl: {s_count} session(s) tracked ({in_tok} input / {out_tok} output tokens)")
     leftovers = [p.relative_to(project).as_posix() for p in project.rglob("*.proposed")
                  if not any(part in IGNORED_DIRS for part in p.relative_to(project).parts)]
     for rel in leftovers:
