@@ -2,55 +2,90 @@
 """Install claude-kit for your user (once per machine).
 
 What it does:
-  1. copies the skills (/claude-kit, /claude-kit-refresh) into ~/.claude/skills/
-  2. removes legacy /bootstrap and /bootstrap-refresh folders from this kit if present
-  3. writes ~/.claude/claude-kit.json with the path to this repository and the Python executable
+  1. installs the skills (/claude-kit, /claude-kit-refresh, /claude-kit-learn) into ~/.claude/skills/
+  2. writes ~/.claude/claude-kit.json with the path to this repository and the Python executable
 
-Why store the path? Skills are copied, while stack profiles and scripts stay
-in THIS repository (the single source of truth). That way, when /claude-kit
-learns a new stack, it saves the profile here, in your Git repo.
+Two modes:
+  default   copies the skills (re-run this script after editing a SKILL.md)
+  --link    links the skills to this repository instead (symlink, or a junction on
+            Windows): edits to SKILL.md files and apply.py are live, no reinstall needed.
 
-Re-run this script after modifying any SKILL.md in the kit.
+Why store the path? Stack profiles and scripts stay in THIS repository (the single
+source of truth). When /claude-kit learns a new stack, it saves the profile here,
+in your Git repo.
 """
 import argparse
 import json
+import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 KIT = Path(__file__).resolve().parent
-LEGACY_SKILLS = ("bootstrap", "bootstrap-refresh")
 
 
-def remove_legacy_skills(skills_dest: Path) -> None:
-    for old_name in LEGACY_SKILLS:
-        old_dir = skills_dest / old_name
-        skill_md = old_dir / "SKILL.md"
-        if skill_md.is_file():
-            content = skill_md.read_text(encoding="utf-8", errors="ignore")
-            if "claude-bootstrap" in content or "claude-kit" in content:
-                shutil.rmtree(old_dir)
-                print(f"Removed legacy skill: {old_dir}")
+def remove_path(path: Path) -> None:
+    """Remove a file, a (real or junction) link, or a directory tree."""
+    if path.is_symlink():
+        path.unlink()
+    elif path.is_dir():
+        if os.name == "nt" and is_junction(path):
+            os.rmdir(path)  # removes the junction only, never the target's content
+        else:
+            shutil.rmtree(path)
+    elif path.exists():
+        path.unlink()
+
+
+def is_junction(path: Path) -> bool:
+    try:
+        return bool(os.path.isjunction(path))  # Python 3.12+
+    except AttributeError:
+        return os.name == "nt" and path.is_dir() and bool(
+            os.stat(path, follow_symlinks=False).st_file_attributes & 0x400  # FILE_ATTRIBUTE_REPARSE_POINT
+        )
+
+
+def link_dir(src: Path, dest: Path) -> str:
+    """Create dest -> src. Returns the link kind used. Raises OSError if impossible."""
+    try:
+        os.symlink(src, dest, target_is_directory=True)
+        return "symlink"
+    except (OSError, NotImplementedError):
+        if os.name != "nt":
+            raise
+    result = subprocess.run(["cmd", "/c", "mklink", "/J", str(dest), str(src)], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise OSError(result.stderr.strip() or result.stdout.strip() or "mklink /J failed")
+    return "junction"
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--claude-dir", default=str(Path.home() / ".claude"),
                         help="Claude Code config directory (default: ~/.claude)")
+    parser.add_argument("--link", action="store_true",
+                        help="link skills to this repository instead of copying them")
     args = parser.parse_args()
 
     claude_dir = Path(args.claude_dir).expanduser()
     skills_dest = claude_dir / "skills"
     skills_dest.mkdir(parents=True, exist_ok=True)
 
-    remove_legacy_skills(skills_dest)
-
     for skill in sorted((KIT / "skills").iterdir()):
         if not (skill / "SKILL.md").is_file():
             continue
         dest = skills_dest / skill.name
-        if dest.exists():
-            shutil.rmtree(dest)
+        if dest.exists() or dest.is_symlink():
+            remove_path(dest)
+        if args.link:
+            try:
+                kind = link_dir(skill, dest)
+                print(f"Linked skill ({kind}): {dest} -> {skill}")
+                continue
+            except OSError as exc:
+                print(f"Could not link {dest.name} ({exc}); copying instead.")
         shutil.copytree(skill, dest, ignore=shutil.ignore_patterns("__pycache__"))
         print(f"Installed skill: {dest}")
 
