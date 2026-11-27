@@ -297,6 +297,65 @@ class TestFormatHook(unittest.TestCase):
             self.assertIn("format.py:", r.stderr)
             self.assertIn("syntax err", r.stderr)
 
+    def test_format_hook_runs_lint_rules_truncates_output_and_never_blocks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = Path(tmp) / "proj"
+            (proj / ".claude").mkdir(parents=True)
+            target = proj / "mod.py"
+            target.write_text("x=1\n", encoding="utf-8")
+            helper = proj / "noisy_lint.py"
+            helper.write_text(
+                "import pathlib, sys\n"
+                "p = pathlib.Path(sys.argv[1])\n"
+                "p.write_text(p.read_text() + '# linted\\n')\n"
+                "for i in range(30):\n"
+                "    print(f'LINT-ERR line {i}')\n"
+                "sys.exit(1)\n",
+                encoding="utf-8",
+            )
+            (proj / ".claude" / "kit.json").write_text(json.dumps({
+                "format_rules": [],
+                "lint_rules": [
+                    {"extensions": [".py"], "command": [sys.executable, str(helper), "{file}"]},
+                ],
+            }), encoding="utf-8")
+
+            r = subprocess.run(
+                [sys.executable, str(FORMAT)],
+                input=json.dumps({"tool_name": "Write", "tool_input": {"file_path": str(target)}, "cwd": str(proj)}),
+                env={**os.environ, "CLAUDE_PROJECT_DIR": str(proj)},
+                capture_output=True, text=True,
+            )
+            self.assertEqual(r.returncode, 0)
+            self.assertIn("# linted", target.read_text(encoding="utf-8"))
+            self.assertIn("lint_rules", r.stderr)
+            self.assertIn("LINT-ERR line 29", r.stderr)
+            self.assertNotIn("LINT-ERR line 0\n", r.stderr)
+
+    def test_format_hook_runs_lint_rules_before_format_rules_and_matches_filenames(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = Path(tmp) / "proj"
+            (proj / ".claude").mkdir(parents=True)
+            target = proj / "Dockerfile"
+            target.write_text("FROM python:3.12\n", encoding="utf-8")
+            (proj / ".claude" / "kit.json").write_text(json.dumps({
+                "format_rules": [
+                    {"filenames": ["Dockerfile", "Dockerfile.*"], "command": [sys.executable, "-c", "import pathlib,sys; p=pathlib.Path(sys.argv[1]); p.write_text(p.read_text()+'fmt;')", "{file}"]},
+                ],
+                "lint_rules": [
+                    {"filenames": ["Dockerfile", "Dockerfile.*"], "command": [sys.executable, "-c", "import pathlib,sys; p=pathlib.Path(sys.argv[1]); p.write_text(p.read_text()+'lint;')", "{file}"]},
+                ],
+            }), encoding="utf-8")
+
+            r = subprocess.run(
+                [sys.executable, str(FORMAT)],
+                input=json.dumps({"tool_name": "Write", "tool_input": {"file_path": str(target)}, "cwd": str(proj)}),
+                env={**os.environ, "CLAUDE_PROJECT_DIR": str(proj)},
+                capture_output=True, text=True,
+            )
+            self.assertEqual(r.returncode, 0)
+            self.assertEqual(target.read_text(encoding="utf-8"), "FROM python:3.12\nlint;fmt;")
+
 
 class TestSessionAndStopHooks(unittest.TestCase):
     def test_session_check_reports_proposed_and_pending_decisions(self):

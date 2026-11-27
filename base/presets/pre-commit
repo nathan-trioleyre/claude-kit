@@ -1,0 +1,36 @@
+#!/bin/sh
+# claude-kit pre-commit hook: runs fast repo checks on staged changes without external hook runners.
+set -e
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR || true)
+[ -z "$staged" ] && exit 0
+
+if [ -f "pyproject.toml" ] || [ -f "ruff.toml" ] || [ -f ".ruff.toml" ]; then
+  py_files=$(printf '%s\n' "$staged" | grep -E '\.py$' || true)
+  if [ -n "$py_files" ] && command -v ruff >/dev/null 2>&1; then
+    printf '%s\n' "$py_files" | xargs ruff check
+    printf '%s\n' "$py_files" | xargs ruff format --check
+  elif [ -n "$py_files" ] && command -v uv >/dev/null 2>&1; then
+    printf '%s\n' "$py_files" | xargs uv run ruff check
+    printf '%s\n' "$py_files" | xargs uv run ruff format --check
+  fi
+fi
+
+if [ -f "package.json" ]; then
+  js_files=$(printf '%s\n' "$staged" | grep -E '\.(ts|tsx|js|jsx|mjs|cjs)$' || true)
+  if [ -n "$js_files" ]; then
+    if [ -x "./node_modules/.bin/eslint" ]; then
+      printf '%s\n' "$js_files" | xargs ./node_modules/.bin/eslint
+    fi
+    if [ -x "./node_modules/.bin/prettier" ]; then
+      printf '%s\n' "$js_files" | xargs ./node_modules/.bin/prettier --check
+    fi
+  fi
+fi
+
+if [ -f "Cargo.toml" ] && command -v cargo >/dev/null 2>&1; then
+  rs_files=$(printf '%s\n' "$staged" | grep -E '\.rs$' || true)
+  if [ -n "$rs_files" ]; then
+    cargo fmt --check
+  fi
+fi

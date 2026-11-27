@@ -338,7 +338,7 @@ class TestApply(unittest.TestCase):
     def test_base_agents_skills_and_org_rules_synced(self):
         with tempfile.TemporaryDirectory() as tmp:
             kit, apply_bin, proj = self._kit_and_project(tmp)
-            (kit / "base" / "agents").mkdir(parents=True)
+            (kit / "base" / "agents").mkdir(parents=True, exist_ok=True)
             (kit / "base" / "agents" / "helper.md").write_text("---\nname: helper\n---\nHelp.\n", encoding="utf-8")
             org = kit / "org"
             (org / "rules").mkdir(parents=True)
@@ -490,6 +490,26 @@ class TestApply(unittest.TestCase):
             self.assertIn("warning threshold 150", doc.stdout)
             self.assertIn("older than 30 days", doc.stdout)
             self.assertIn("harness.log shows 4x blocks", doc.stdout)
+
+    def test_apply_syncs_base_review_agent_and_skill_without_copying_base_presets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, apply_bin, proj = self._kit_and_project(tmp)
+            run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python")
+            self.assertTrue((proj / ".claude" / "agents" / "code-reviewer.md").is_file())
+            self.assertTrue((proj / ".claude" / "skills" / "review" / "SKILL.md").is_file())
+            self.assertFalse((proj / ".claude" / "presets").exists())
+            kj = json.loads((proj / ".claude" / "kit.json").read_text(encoding="utf-8"))
+            self.assertIn(".claude/agents/code-reviewer.md", kj["managed"])
+            self.assertIn(".claude/skills/review/SKILL.md", kj["managed"])
+
+    def test_local_mode_never_creates_root_presets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, apply_bin, proj = self._kit_and_project(tmp)
+            (proj / ".git" / "info").mkdir(parents=True)
+            run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python", "--local")
+            self.assertFalse((proj / ".editorconfig").exists())
+            self.assertFalse((proj / ".githooks").exists())
+            self.assertFalse((proj / ".gitignore").exists())
 
 
 if __name__ == "__main__":
