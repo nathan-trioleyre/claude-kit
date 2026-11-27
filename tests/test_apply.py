@@ -349,6 +349,8 @@ class TestApply(unittest.TestCase):
             ctx = json.dumps({"stop_verify": True})
             run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python", "--context", "-", input=ctx)
             self.assertTrue((proj / ".claude" / "agents" / "helper.md").is_file())
+            self.assertTrue((proj / ".claude" / "skills" / "commit" / "SKILL.md").is_file())
+            self.assertTrue((proj / ".claude" / "skills" / "handoff" / "SKILL.md").is_file())
             self.assertTrue((proj / ".claude" / "skills" / "deploy" / "SKILL.md").is_file())
             self.assertTrue((proj / ".claude" / "rules" / "security.md").is_file())
             kj = json.loads((proj / ".claude" / "kit.json").read_text(encoding="utf-8"))
