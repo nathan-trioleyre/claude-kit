@@ -1,34 +1,21 @@
-# Profils de stack
+# Stack Profiles
 
-Un dossier par stack (`python/`, `csharp/`, `angular/`...), créé par `/claude-kit`
-la première fois qu'il rencontre la stack, puis réutilisé sur les projets suivants.
+One folder per stack (`python/`, `csharp-dotnet/`, `angular/`, …), created by `/claude-kit` the first time it encounters a stack, then reused across subsequent projects.
 
-Chaque profil contient :
-- `profile.json` : données lisibles par le script (détection, commandes, permissions,
-  règles de formatage, `paths` optionnel pour `.claude/rules/<stack>.md`, `supersedes`
-  optionnel (ex: `angular` remplace `typescript`), détection de conflits `tooling` optionnelle,
-  sources, date de dernière vérification).
-- `practices.md` : résumé des bonnes pratiques (copié dans `CLAUDE.md` ou dans
-  `.claude/rules/<stack>.md` quand des chemins sont définis).
+Each profile contains:
+- `profile.json`: machine-readable metadata (detection globs, commands, permissions, format rules, optional `paths` for `.claude/rules/<stack>.md`, optional `supersedes`, optional `tooling` conflict detection, sources, `last_verified` date).
+- `practices.md`: summary of **timeless** stack best practices (max 15 lines; copied into `CLAUDE.md` or `.claude/rules/<stack>.md` when paths are defined).
+- `versions/<ver>.md` *(optional)*: rules specific to a major version (max 8 lines, e.g., `versions/11.md`, `versions/21.md`), created on demand and injected automatically when `stack_versions` matches.
 
-Règles :
-- Un profil n'est enregistré qu'après validation (`apply.py validate`) et ton accord.
-- Chaque profil cite ses sources (documentation officielle de préférence).
-- Un profil de plus de 90 jours est considéré comme obsolète : `/claude-kit-refresh <stack>`.
-- Copie `_TEMPLATE/` pour en écrire un à la main.
+Rules:
+- A profile is only saved after validation (`apply.py validate`) and your approval.
+- Every profile cites its sources (official documentation preferred).
+- A profile older than 90 days is flagged as stale: `/claude-kit-refresh <stack>`.
+- Copy `_TEMPLATE/` to author one by hand.
 
-## `tooling` (optionnel) : cohabiter avec ce qu'un projet a déjà
+## `tooling` (optional): coexisting with existing project tools
 
-Déclare, par sujet (`formatter`, `linter`, `package-manager`...), l'outil que préfère le kit
-(`kit`) et des `alternatives` connues. Quand un projet utilise déjà une alternative, `apply.py`
-retient les règles du kit qui font doublon jusqu'à ce que l'utilisateur décide
-(`keep_existing`, `adopt_kit`, `keep_both`).
+Declares, per concern (`formatter`, `linter`, `package-manager`, …), the kit's preferred tool (`kit`) and known `alternatives`. When a project already uses an alternative, `apply.py` withholds overlapping kit rules until the user decides (`keep_existing`, `adopt_kit`, `keep_both`).
 
-- `kit` : `name`, `markers` (ce qui révèle l'outil du kit), `commands` (clés de commandes dont il
-  est responsable), `format_rules` (vrai s'il porte la règle de formatage), `permissions` (règles
-  dont il est responsable), `practice_terms` (les lignes de pratiques qui les mentionnent sont
-  retirées quand l'outil existant est conservé).
-- `alternatives[]` : `name`, `markers` (`{"file": glob, "contains": texte}`), `hooks` (mots qui
-  révèlent un hook fait main), et des remplacements optionnels utilisés quand l'outil est
-  conservé : `commands`, `permissions_allow`, `format_rule`. N'ajoute que des remplacements dont
-  tu es sûr.
+- `kit`: `name`, `markers` (what reveals the kit tool), `commands` (command keys it owns), `format_rules` (true if it owns the format rule), `permissions` (rules it owns), `practice_terms` (practice lines mentioning them are withheld when keeping the existing tool).
+- `alternatives[]`: `name`, `markers` (`{"file": glob, "contains": text}`), `hooks` (keywords revealing a hand-made hook), and optional replacements used when keeping the tool: `commands`, `permissions_allow`, `format_rule`. Only add replacements you are certain about.

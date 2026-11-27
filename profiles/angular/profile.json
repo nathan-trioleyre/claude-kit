@@ -170,6 +170,19 @@
           ],
           "hooks": [
             "yarn"
+          ],
+          "commands": {
+            "install": "yarn install --frozen-lockfile",
+            "dev": "yarn start",
+            "test": "yarn test --watch=false",
+            "build": "yarn build",
+            "verify": "yarn test --watch=false && yarn build"
+          },
+          "permissions_allow": [
+            "Bash(yarn install*)",
+            "Bash(yarn test*)",
+            "Bash(yarn build*)",
+            "Bash(yarn lint*)"
           ]
         },
         {
@@ -184,7 +197,14 @@
           ],
           "hooks": [
             "bun"
-          ]
+          ],
+          "commands": {
+            "install": "bun install --frozen-lockfile",
+            "dev": "bun run start",
+            "test": "bun run test -- --watch=false",
+            "build": "bun run build",
+            "verify": "bun run test -- --watch=false && bun run build"
+          }
         }
       ]
     }

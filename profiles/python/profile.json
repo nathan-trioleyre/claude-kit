@@ -232,11 +232,18 @@
           ],
           "commands": {
             "install": "poetry install",
-            "test": "poetry run pytest"
+            "test": "poetry run pytest",
+            "lint": "poetry run ruff check .",
+            "format": "poetry run ruff format .",
+            "build": "poetry build",
+            "verify": "poetry run ruff check . && poetry run pytest"
           },
           "permissions_allow": [
             "Bash(poetry install*)",
-            "Bash(poetry run pytest*)"
+            "Bash(poetry run pytest*)",
+            "Bash(poetry run ruff*)",
+            "Bash(poetry run mypy*)",
+            "Bash(poetry build*)"
           ]
         },
         {
