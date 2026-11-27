@@ -13,12 +13,14 @@ You are configuring the current project from the user's **claude-kit** repositor
 - The `apply.py` script handles everything mechanical that must stay identical across projects: detecting known profiles, validating profiles, copying hooks, merging `settings.json`, and generating `CLAUDE.md` / `.claude/rules/*.md`.
 - **You** handle what a script cannot do: understanding the project, creating or updating stack profiles from official documentation, and writing the real architecture, gotchas, and monorepo `rule_paths`.
 
-Only write into the project through `apply.py` (except when merging a user-approved `.proposed` file, Step 5).
+Only write into the project through `apply.py`, except when merging a user-approved `.proposed` file (Step 5) or carrying out a user-approved migration plan (Step 3b).
+
+**Existing setups are never overridden silently.** If the project already has its own CLAUDE.md, hooks, formatter, linter or package manager, Step 1b detects it and Step 3b has the user decide, one conflict at a time. Until a decision is recorded, the script withholds the kit's overlapping rules.
 
 **Modes** (from `$ARGUMENTS`):
 - empty: full setup, Steps 0 to 6 below.
-- `doctor`: Step 0, then run `APPLY doctor --project .` and explain each `ISSUE` in plain English. Then propose the right fix: `sync` for outdated hooks/settings, a full `/claude-kit` for new stacks or refreshed profiles. Write nothing yourself.
-- `sync`: Step 0, then `APPLY sync --project . --dry-run`, summarize, ask for confirmation, re-run without `--dry-run`. This refreshes kit-managed files only (settings, hooks, agents/commands, `.mcp.json`, `kit.json`); `CLAUDE.md` is not touched. If a hook is reported `skipped ... modified locally`, show the diff against the kit's copy and ask before using `--force-hooks`.
+- `doctor`: Step 0, then run `APPLY doctor --project .` and explain each `ISSUE` in plain English. Then propose the right fix: `sync` for outdated hooks/settings, a full `/claude-kit` for new stacks or refreshed profiles, Step 3b for a `tooling conflict`, and Step 3b (option "adopt the kit") to finish a migration reported as `finish the migration`. Write nothing yourself.
+- `sync`: Step 0, then `APPLY sync --project . --dry-run`, summarize, ask for confirmation, re-run without `--dry-run`. This refreshes kit-managed files only (settings, hooks, agents/commands, `.mcp.json`, `kit.json`); `CLAUDE.md` is not touched. Recorded tooling decisions are respected; a new undecided conflict is reported (`! CONFLICT`): resolve it with Step 3b (`APPLY decide`, then `sync`). If a hook is reported `skipped ... modified locally`, show the diff against the kit's copy and ask before using `--force-hooks`.
 
 ## Step 0: locate the kit
 
@@ -38,6 +40,15 @@ Hereafter:
 3. Run `APPLY detect --project .` to see which known profiles match (scans up to depth 5 while pruning `node_modules`/`.venv`/etc.).
 4. List **all** stacks in the project (an Angular + C# monorepo has two), including those without a profile yet.
 5. Note the project's **actual commands** (`package.json` scripts, `Makefile`, CI) and subproject directories for monorepos. Project commands take precedence over profile defaults.
+
+## Step 1b: audit what already exists (read-only)
+
+Run `APPLY audit --project .` (JSON). It reports:
+- `existing`: whether a `CLAUDE.md` exists and its section headings, files in `.claude/` the kit did not install, hooks and permissions in `settings.json` that are not the kit's;
+- `tooling`: one entry per concern (formatter, linter, package manager...) where the project already uses a tool the kit's profile does not prefer, with the evidence (config files, hand-made hooks). `status` is `pending` (no decision yet), `resolved`, or `migration_pending` (kit adopted earlier, traces of the old tool remain);
+- `pending_conflicts`: number of conflicts to settle.
+
+If the project has nothing of its own (`existing` empty, no `tooling` entries), skip Step 3b.
 
 ## Step 2: one profile per stack
 
@@ -66,14 +77,26 @@ Build the context JSON object:
   "architecture": "5 to 10 markdown lines: entry point, main folders, data flow",
   "gotchas": "only real gotchas observed in the code or config",
   "commands_override": { "<stack>": { "test": "actual project command" } },
-  "rule_paths": { "<stack>": ["apps/api/**"] }
+  "rule_paths": { "<stack>": ["apps/api/**"] },
+  "decisions": { "<stack>": { "<concern>": "keep_existing | adopt_kit | keep_both" } }
 }
 ```
 
+- `decisions`: the answers from Step 3b, only for concerns the audit listed.
 - Only fill in what you actually read in the code. If you don't know, omit the key: the script inserts `_To be completed._`. Never guess or invent.
 - Include `"rule_paths"` only for multi-stack monorepos when you want stack practices written into path-scoped `.claude/rules/<stack>.md` files instead of inline in `CLAUDE.md`.
 - The kit may also contain an optional `org/` layer (company-wide rules, permissions, MCP servers, agents, commands, see `org/README.md`). `apply.py` applies it automatically; do not duplicate its content in the context JSON.
 - Pass the JSON via stdin using `--context -` (preferred, leaves no temp file) or a temp file outside the project.
+
+## Step 3b: settle each conflict with the user
+
+For every `tooling` entry with status `pending` (and `migration_pending` if the user wants to finish a migration), **one at a time**, show two columns: what the project has now (the tool and its evidence) versus what the kit would put (tool, command, permissions). Recommend one side with a reason (for example: keep the existing tool if it is configured deliberately and CI depends on it; adopt the kit when nothing enforces the old one), then ask. The choices:
+
+- **Keep the existing tool** (`keep_existing`): none of the kit's overlapping rules is applied. The existing tool's known equivalents are used instead, and `CLAUDE.md` says so. Put the project's real commands in `commands_override` (`format`, `lint`, `verify`...) when the profile has no equivalent for them.
+- **Adopt the kit's tool** (`adopt_kit`): the kit's tool is configured. Then propose a **migration plan** listing exactly what to remove or change (old config sections, hand-made hooks in `settings.json`, CI steps, dev dependencies) and the one-time reformat of the code base. Show it and wait for approval. This is the only case where you edit project files yourself, limited to the approved plan; recommend committing the reformat on its own so it stays reviewable. Afterwards `APPLY doctor` must no longer report `finish the migration`.
+- **Keep both** (`keep_both`): only for tools that do not overlap. Both are applied, nothing is withheld.
+
+Record every answer in the context JSON (Step 3): `"decisions": { "<stack>": { "<concern>": "keep_existing" } }`. They are stored in `.claude/kit.json`, so later `sync` and `doctor` runs do not ask again. To change a decision later: `APPLY decide --project . --profile <stack> --concern <concern> --choice <choice>`, then `APPLY sync --project .` (a migration is only needed when switching to `adopt_kit`).
 
 ## Step 4: dry run
 
@@ -85,7 +108,7 @@ Summarize the result in plain English (what will be created, merged, upgraded, o
 
 Re-run the same command without `--dry-run`.
 
-If any `.proposed` file was created (`CLAUDE.md.proposed` or `.claude/rules/<stack>.md.proposed`), an existing file was already present. Compare the two, explain useful differences, and offer to merge missing sections into the existing file **without deleting user content**. Only do so with the user's approval, then delete the `.proposed` file.
+If any `.proposed` file was created (`CLAUDE.md.proposed` or `.claude/rules/<stack>.md.proposed`), an existing file was already present. The report already lists, section by section, what exists only in the kit's version, only in the user's file, or in both with different content. Go through the differing sections: where the user's file contradicts the kit (a convention, a command), ask which wins, one at a time, consistently with the decisions of Step 3b. Merge missing sections into the existing file **without deleting user content** unless the user chose to replace it. Only do so with the user's approval, then delete the `.proposed` file.
 
 ## Step 6: wrap up
 
@@ -101,6 +124,7 @@ Provide a brief summary:
 - Ask only one question at a time.
 - Never modify files in `KIT/base/` (hooks, base settings): if you think a change is needed, propose it to the user.
 - Never save an unapproved or unvalidated profile.
+- Never remove or replace a tool the project already uses without an explicit `adopt_kit` decision and an approved plan.
 - No secrets in generated files.
 - Re-running on an already configured project is safe: a customized `CLAUDE.md` is left alone unless the kit's own output changed (then a `.proposed` file is written).
 - If no working Python 3 interpreter is available, tell the user: hooks and `apply.py` depend on it.

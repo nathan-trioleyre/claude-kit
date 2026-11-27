@@ -17,10 +17,22 @@ Afterwards, the kit keeps projects in line with it:
 | Command | What it does |
 |---|---|
 | `/claude-kit` | first setup (or full re-run) of a project |
-| `/claude-kit doctor` | reports drift: outdated hooks, missing permissions, stale profiles, new stacks, `CLAUDE.md` gaps |
+| `/claude-kit doctor` | reports drift: outdated hooks, missing permissions, stale profiles, new stacks, `CLAUDE.md` gaps, unresolved tooling conflicts |
 | `/claude-kit sync` | refreshes only the kit-managed files (settings, hooks, agents/commands, `.mcp.json`); never touches `CLAUDE.md` |
 | `/claude-kit-refresh [stack\|all]` | re-reads a profile's official sources and proposes updates |
 | `/claude-kit-learn` | promotes durable lessons from a project's `CLAUDE.md` into the kit (profile, `org/`, or `base/`) |
+
+## Projects That Already Have Their Own Setup
+
+On a project with its own `CLAUDE.md`, hooks, formatter, linter or package manager, `/claude-kit` never overrides anything silently:
+
+1. `apply.py audit` inventories what exists and lists **conflicts** between the project's tools and the profile's (e.g. `black` in `pyproject.toml` vs the kit's `ruff`, `pnpm-lock.yaml` vs `npm`, a hand-made formatter hook).
+2. For each conflict you choose, one at a time: **keep the existing tool** (the kit withholds its overlapping commands, permissions, formatting rule and practice lines, and uses the existing tool's equivalents), **adopt the kit's** (Claude proposes a migration plan: old config and hooks to remove, one-time reformat; nothing is touched before you approve it) or **keep both**.
+3. The answer is stored in `.claude/kit.json` (`decisions`), so `sync` and `doctor` respect it. `doctor` flags undecided conflicts and half-finished migrations; `apply.py decide` changes a decision later.
+4. Until you decide, the kit behaves as if you had chosen to keep the existing tool.
+5. An existing `CLAUDE.md` is compared section by section (only in the kit / only yours / different) before anything is merged.
+
+Conflict detection comes from the optional `tooling` section of each profile (see [profiles/README.md](profiles/README.md)).
 
 ## Layers
 
@@ -35,7 +47,7 @@ Each layer only **adds** to the previous one. See [org/README.md](org/README.md)
 | Copies hooks; upgrades them only if the project's copy is unmodified (hashes in `.claude/kit.json`) | Creates/refreshes profiles from official docs |
 | Merges `settings.json` without removing custom user rules | Writes project architecture, gotchas, and monorepo `rule_paths` |
 | Generates `CLAUDE.md` & `.claude/rules/*.md` (without overwriting) | Shows diffs and asks for confirmation |
-| `doctor` / `sync` / `validate` | Explains issues and proposes the fix |
+| `audit` / `decide` / `doctor` / `sync` / `validate` | Explains issues, asks you to settle each conflict, proposes and carries out the approved migration |
 
 Core rule: **what must be identical every time is code; what requires understanding is delegated to Claude.**
 
