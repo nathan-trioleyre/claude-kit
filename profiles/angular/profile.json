@@ -4,6 +4,9 @@
   "detect": [
     "angular.json"
   ],
+  "supersedes": [
+    "typescript"
+  ],
   "paths": [],
   "commands": {
     "install": "npm ci",

@@ -1,0 +1,181 @@
+{
+  "stack": "typescript",
+  "display_name": "TypeScript / Node.js",
+  "detect": [
+    "tsconfig.json"
+  ],
+  "paths": [],
+  "commands": {
+    "install": "npm ci",
+    "dev": "npm run dev",
+    "test": "npm test",
+    "lint": "npm run lint",
+    "format": null,
+    "build": "npm run build",
+    "verify": "npm run lint && npm test && npm run build"
+  },
+  "permissions_allow": [
+    "Bash(npm ci)",
+    "Bash(npm test*)",
+    "Bash(npm run build*)",
+    "Bash(npm run lint*)",
+    "Bash(tsc --noEmit*)"
+  ],
+  "format_rules": [
+    {
+      "extensions": [
+        ".ts",
+        ".tsx",
+        ".js",
+        ".jsx",
+        ".json"
+      ],
+      "command": [
+        "prettier",
+        "--write",
+        "{file}"
+      ]
+    }
+  ],
+  "tooling": [
+    {
+      "concern": "formatter",
+      "kit": {
+        "name": "prettier",
+        "markers": [
+          {
+            "file": ".prettierrc*"
+          },
+          {
+            "file": "prettier.config.*"
+          },
+          {
+            "file": "package.json",
+            "contains": "\"prettier\""
+          }
+        ],
+        "commands": [
+          "format"
+        ],
+        "format_rules": true
+      },
+      "alternatives": [
+        {
+          "name": "biome",
+          "markers": [
+            {
+              "file": "biome.json"
+            },
+            {
+              "file": "biome.jsonc"
+            }
+          ],
+          "hooks": [
+            "biome"
+          ],
+          "format_rule": {
+            "extensions": [
+              ".ts",
+              ".tsx",
+              ".js",
+              ".jsx",
+              ".json"
+            ],
+            "command": [
+              "biome",
+              "format",
+              "--write",
+              "{file}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "concern": "package-manager",
+      "kit": {
+        "name": "npm",
+        "markers": [
+          {
+            "file": "package-lock.json"
+          }
+        ],
+        "commands": [
+          "install",
+          "dev",
+          "test",
+          "lint",
+          "build",
+          "verify"
+        ],
+        "permissions": [
+          "Bash(npm ci)",
+          "Bash(npm test*)",
+          "Bash(npm run build*)",
+          "Bash(npm run lint*)"
+        ],
+        "practice_terms": [
+          "npm ci",
+          "package-lock.json"
+        ]
+      },
+      "alternatives": [
+        {
+          "name": "pnpm",
+          "markers": [
+            {
+              "file": "pnpm-lock.yaml"
+            }
+          ],
+          "hooks": [
+            "pnpm"
+          ],
+          "commands": {
+            "install": "pnpm install --frozen-lockfile",
+            "dev": "pnpm run dev",
+            "test": "pnpm test",
+            "lint": "pnpm run lint",
+            "build": "pnpm run build",
+            "verify": "pnpm run lint && pnpm test && pnpm run build"
+          },
+          "permissions_allow": [
+            "Bash(pnpm install*)",
+            "Bash(pnpm test*)",
+            "Bash(pnpm run build*)",
+            "Bash(pnpm run lint*)"
+          ]
+        },
+        {
+          "name": "yarn",
+          "markers": [
+            {
+              "file": "yarn.lock"
+            }
+          ],
+          "hooks": [
+            "yarn"
+          ]
+        },
+        {
+          "name": "bun",
+          "markers": [
+            {
+              "file": "bun.lock"
+            },
+            {
+              "file": "bun.lockb"
+            }
+          ],
+          "hooks": [
+            "bun"
+          ]
+        }
+      ]
+    }
+  ],
+  "sources": [
+    "https://www.typescriptlang.org/tsconfig/",
+    "https://nodejs.org/en/learn/getting-started/introduction-to-nodejs"
+  ],
+  "last_verified": "2026-11-27"
+}

@@ -1,0 +1,6 @@
+- Keep `strict: true` in `tsconfig.json`; avoid `any` (prefer `unknown` + narrowing).
+- Run `tsc --noEmit` alongside tests/lint when typechecking is separate from build.
+- Use `npm ci` for reproducible installs; do not edit `package-lock.json` by hand.
+- Validate external inputs (env vars, API payloads, CLI args) at boundaries before trusting types.
+- Prefer explicit return types on exported functions and `import type` for type-only imports.
+- Never commit secrets or `.env` files; load config from environment variables.

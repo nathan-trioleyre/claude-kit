@@ -5,8 +5,9 @@ la première fois qu'il rencontre la stack, puis réutilisé sur les projets sui
 
 Chaque profil contient :
 - `profile.json` : données lisibles par le script (détection, commandes, permissions,
-  règles de formatage, `paths` optionnel pour `.claude/rules/<stack>.md`, détection
-  de conflits `tooling` optionnelle, sources, date de dernière vérification).
+  règles de formatage, `paths` optionnel pour `.claude/rules/<stack>.md`, `supersedes`
+  optionnel (ex: `angular` remplace `typescript`), détection de conflits `tooling` optionnelle,
+  sources, date de dernière vérification).
 - `practices.md` : résumé des bonnes pratiques (copié dans `CLAUDE.md` ou dans
   `.claude/rules/<stack>.md` quand des chemins sont définis).
 
