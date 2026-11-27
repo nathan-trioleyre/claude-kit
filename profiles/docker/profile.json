@@ -43,7 +43,7 @@
         "only_when_installed": true,
         "preset_files": [
           {
-            "src": "presets/.hadolint.yaml",
+            "src": "presets/.hadolint.yaml.template",
             "dest": ".hadolint.yaml",
             "mode": "create"
           }

@@ -1760,7 +1760,7 @@ def cmd_scaffold_tooling(args) -> None:
     if args.base_preset:
         if args.base_preset == "editorconfig":
             _copy_preset_non_destructive(
-                BASE / "presets" / ".editorconfig", project / ".editorconfig",
+                BASE / "presets" / ".editorconfig.template", project / ".editorconfig",
                 ".editorconfig", project, args.dry_run, report,
             )
         elif args.base_preset == "pre-commit":
@@ -1769,7 +1769,7 @@ def cmd_scaffold_tooling(args) -> None:
                 report.append("skipped   .githooks/pre-commit (existing git hook framework detected)")
             else:
                 _copy_preset_non_destructive(
-                    BASE / "presets" / "pre-commit", project / ".githooks" / "pre-commit",
+                    BASE / "presets" / "pre-commit.template", project / ".githooks" / "pre-commit",
                     ".githooks/pre-commit", project, args.dry_run, report, executable=True,
                 )
                 report.append("hint      run `git config core.hooksPath .githooks` locally to activate")

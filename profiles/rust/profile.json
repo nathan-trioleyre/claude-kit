@@ -55,12 +55,12 @@
         "only_when_installed": true,
         "preset_files": [
           {
-            "src": "presets/clippy.toml",
+            "src": "presets/clippy.toml.template",
             "dest": "clippy.toml",
             "mode": "create"
           },
           {
-            "src": "presets/rustfmt.toml",
+            "src": "presets/rustfmt.toml.template",
             "dest": "rustfmt.toml",
             "mode": "create"
           }

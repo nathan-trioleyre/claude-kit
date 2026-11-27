@@ -761,6 +761,15 @@ class TestToolingConflicts(unittest.TestCase):
             self.assertNotEqual(res2.returncode, 0)
             self.assertFalse((proj / "eslint.config.mjs").exists())
 
+    def test_kit_presets_do_not_trigger_stack_detect_false_positives(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            kit = kit_with_real_profiles(t, "angular", "csharp-dotnet", "docker", "nextjs", "python", "rust", "typescript")
+            apply_bin = apply_bin_of(kit)
+            out = run_apply(apply_bin, "detect", "--project", str(kit)).stdout
+            data = json.loads(out)
+            self.assertEqual(data["matched"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

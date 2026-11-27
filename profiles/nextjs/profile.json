@@ -80,7 +80,7 @@
         "format_rules": true,
         "preset_files": [
           {
-            "src": "presets/.prettierrc",
+            "src": "presets/.prettierrc.template",
             "dest": ".prettierrc",
             "mode": "create"
           }
@@ -149,7 +149,7 @@
         ],
         "preset_files": [
           {
-            "src": "presets/eslint.config.mjs",
+            "src": "presets/eslint.config.mjs.template",
             "dest": "eslint.config.mjs",
             "mode": "create"
           }
@@ -221,7 +221,7 @@
         ],
         "preset_files": [
           {
-            "src": "presets/tsconfig.json",
+            "src": "presets/tsconfig.json.template",
             "dest": "tsconfig.json",
             "mode": "create"
           }

@@ -79,7 +79,7 @@
         ],
         "preset_files": [
           {
-            "src": "presets/ruff.toml",
+            "src": "presets/ruff.toml.template",
             "dest": "ruff.toml",
             "mode": "create"
           }
@@ -162,7 +162,7 @@
         ],
         "preset_files": [
           {
-            "src": "presets/ruff.toml",
+            "src": "presets/ruff.toml.template",
             "dest": "ruff.toml",
             "mode": "create"
           }
@@ -350,7 +350,7 @@
         "only_when_installed": true,
         "preset_files": [
           {
-            "src": "presets/mypy.ini",
+            "src": "presets/mypy.ini.template",
             "dest": "mypy.ini",
             "mode": "create"
           }

@@ -28,7 +28,7 @@
         "markers": [{ "file": "kit-formatter.toml" }],
         "commands": ["format"],
         "format_rules": true,
-        "preset_files": [{ "src": "presets/kit-formatter.toml", "dest": "kit-formatter.toml", "mode": "create" }],
+        "preset_files": [{ "src": "presets/kit-formatter.toml.template", "dest": "kit-formatter.toml", "mode": "create" }],
         "install_packages": ["kit-formatter"]
       },
       "alternatives": [

@@ -72,12 +72,12 @@
         "only_when_installed": true,
         "preset_files": [
           {
-            "src": "presets/Directory.Build.props",
+            "src": "presets/Directory.Build.props.template",
             "dest": "Directory.Build.props",
             "mode": "create"
           },
           {
-            "src": "presets/.globalconfig",
+            "src": "presets/.globalconfig.template",
             "dest": ".globalconfig",
             "mode": "create"
           }
