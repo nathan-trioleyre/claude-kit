@@ -17,6 +17,7 @@ Ensuite, le kit garde les projets alignés sur lui :
 | Commande | Ce qu'elle fait |
 |---|---|
 | `/claude-kit` | première configuration (ou nouvelle passe complète) d'un projet |
+| `/claude-kit local` | configuration **personnelle et invisible** pour un repo d'équipe (`CLAUDE.local.md`, `.claude/settings.local.json`, `.git/info/exclude` — ne touche jamais au `.gitignore`, au `CLAUDE.md` ni au `settings.json` de l'équipe) |
 | `/claude-kit doctor` | signale les écarts : hooks périmés, permissions manquantes, profils obsolètes, nouvelles stacks, trous dans `CLAUDE.md`, conflits d'outillage non résolus |
 | `/claude-kit sync` | rafraîchit uniquement les fichiers gérés par le kit (settings, hooks, agents/commandes, `.mcp.json`) ; ne touche jamais à `CLAUDE.md` |
 | `/claude-kit-refresh [stack\|all]` | relit les sources officielles d'un profil et propose des mises à jour |

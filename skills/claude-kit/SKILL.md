@@ -2,7 +2,7 @@
 name: claude-kit
 description: Configures Claude Code for the current project (CLAUDE.md, modular rules, permissions, security and formatting hooks) by detecting the stack, then reusing or creating a stack profile in claude-kit. Use when the user types /claude-kit, lands on a new or existing project, or asks to set up, check (`doctor`) or update (`sync`) Claude's configuration for a project.
 disable-model-invocation: true
-argument-hint: "[doctor | sync]"
+argument-hint: "[local | doctor | sync]"
 ---
 
 # /claude-kit: prepare Claude Code for this project
@@ -19,6 +19,7 @@ Only write into the project through `apply.py`, except when merging a user-appro
 
 **Modes** (from `$ARGUMENTS`):
 - empty: full setup, Steps 0 to 6 below.
+- `local`: full setup in stealth/personal mode for shared team repositories (pass `--local` to `APPLY apply`). Writes `CLAUDE.local.md` and `.claude/settings.local.json`, records exclusions in `.git/info/exclude`, and never touches `.gitignore`, team `CLAUDE.md`, or team `.claude/settings.json`. Later `sync` and `doctor` remember this mode automatically.
 - `doctor`: Step 0, then run `APPLY doctor --project .` and explain each `ISSUE` in plain English. Then propose the right fix: `sync` for outdated hooks/settings, a full `/claude-kit` for new stacks or refreshed profiles, Step 3b for a `tooling conflict`, and Step 3b (option "adopt the kit") to finish a migration reported as `finish the migration`. Write nothing yourself.
 - `sync`: Step 0, then `APPLY sync --project . --dry-run`, summarize, ask for confirmation, re-run without `--dry-run`. This refreshes kit-managed files only (settings, hooks, agents/commands, `.mcp.json`, `kit.json`); `CLAUDE.md` is not touched. Recorded tooling decisions are respected; a new undecided conflict is reported (`! CONFLICT`): resolve it with Step 3b (`APPLY decide`, then `sync`). If a hook is reported `skipped ... modified locally`, show the diff against the kit's copy and ask before using `--force-hooks`.
 
