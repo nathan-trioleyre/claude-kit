@@ -10,7 +10,7 @@ When you land on a project, `/claude-kit`:
 2. **checks** `profiles/` to see if the stack (and its detected major version in `versions/`) is already known;
    - yes → reuses the profile (and version rules) without re-researching;
    - no → reads official documentation, validates and shows the proposed profile (or `versions/<major>.md`), then **saves it into this repository after your approval**;
-3. **generates** a `CLAUDE.md` (plus optional path-scoped `.claude/rules/<stack>.md`), permissions, and hooks (safety + formatting) without ever overwriting existing files.
+3. **generates** a `CLAUDE.md` (plus optional path-scoped `.claude/rules/<stack>.md`), permissions, and hooks (safety + formatting + fast post-edit linting) without ever overwriting existing files, and offers strict per-language linter/formatter presets (`.editorconfig`, ESLint, Ruff, Roslyn analyzers, etc.) when a project lacks them.
 
 Afterwards, the kit keeps projects aligned:
 
@@ -43,9 +43,9 @@ Each layer only **adds** to the previous one. See [org/README.md](org/README.md)
 In each configured project, the kit aligns with the **5 Claude Code layers**:
 1. **`CLAUDE.md` & `MEMORY.md`**: `CLAUDE.md` for invariants, commands, architecture, and gotchas (≤ 80 lines, 40–60 sweet spot; `@file` imports supported), plus `MEMORY.md` as a lightweight inter-session state index (≤ 150 lines).
 2. **`.claude/rules/*.md`**: modular rules scoped by `paths` (monorepos, `base/rules/`, `org/rules/`).
-3. **`.claude/skills/`** (and `commands/`): optional on-demand workflows from `base/` or `org/`.
-4. **`.claude/agents/`**: optional isolated subagents from `base/` or `org/`.
-5. **Hooks (`.claude/settings.json`) & Observability**: deterministic guardrails (`SessionStart` with `session-check.py` including `~/.npmrc` supply-chain checks, `PreToolUse` with `guard.py`, `PostToolUse` with `format.py`, and `Stop` with `verify-stop.py` active by default whenever `verify_command` is set — opt-out via `"stop_verify": false` in `.claude/kit.json`). Hook blocks are logged to `.claude/logs/harness.log` and audited by `/claude-kit doctor` and `/claude-kit-learn`.
+3. **`.claude/skills/`** (and `commands/`): optional on-demand workflows from `base/` (`/commit`, `/handoff`, `/review`) or `org/`.
+4. **`.claude/agents/`**: optional isolated subagents from `base/` (`code-reviewer`) or `org/`.
+5. **Hooks (`.claude/settings.json`) & Observability**: deterministic guardrails (`SessionStart` with `session-check.py` including `~/.npmrc` supply-chain checks, `PreToolUse` with `guard.py`, `PostToolUse` with `format.py` running both `format_rules` and fast `lint_rules`, and `Stop` with `verify-stop.py` active by default whenever `verify_command` is set — opt-out via `"stop_verify": false` in `.claude/kit.json`). Hook blocks are logged to `.claude/logs/harness.log` and audited by `/claude-kit doctor` and `/claude-kit-learn`.
 
 ## Division of labor
 

@@ -13,9 +13,9 @@ You are configuring the current project from the user's **claude-kit** repositor
 - The `apply.py` script handles everything mechanical that must stay identical across projects: detecting known profiles, validating profiles, copying hooks, merging `settings.json`, and generating `CLAUDE.md` / `.claude/rules/*.md`.
 - **You** handle what a script cannot do: understanding the project, creating or updating stack profiles from official documentation, and writing the real architecture, gotchas, and monorepo `rule_paths`.
 
-Only write into the project through `apply.py`, except when merging a user-approved `.proposed` file (Step 5) or carrying out a user-approved migration plan (Step 3b).
+Only write into the project through `apply.py`, except when merging a user-approved `.proposed` file (Step 5), applying user-approved TOML manifest snippets or running approved package installs (Step 3c), or carrying out a user-approved migration plan (Step 3b).
 
-**Existing setups are never overridden silently.** If the project already has its own CLAUDE.md, hooks, formatter, linter or package manager, Step 1b detects it and Step 3b has the user decide, one conflict at a time. Until a decision is recorded, the script withholds the kit's overlapping rules.
+**Existing setups are never overridden silently.** If the project already has its own CLAUDE.md, hooks, formatter, linter or package manager, Step 1b detects it and Step 3b has the user decide, one conflict at a time. Until a decision is recorded, the script withholds the kit's overlapping rules. If a project has **no** linter/formatter configured yet, Step 3c offers the profile's strict preset (plus optional `.editorconfig` and `.githooks/pre-commit`) before `apply.py apply`.
 
 **Modes** (from `$ARGUMENTS`):
 - empty: full setup, Steps 0 to 6 below.
@@ -47,9 +47,10 @@ Hereafter:
 Run `APPLY audit --project .` (JSON). It reports:
 - `existing`: whether a `CLAUDE.md` exists and its section headings, files in `.claude/` the kit did not install, hooks and permissions in `settings.json` that are not the kit's;
 - `tooling`: one entry per concern (formatter, linter, package manager...) where the project already uses a tool the kit's profile does not prefer, with the evidence (config files, hand-made hooks). `status` is `pending` (no decision yet), `resolved`, or `migration_pending` (kit adopted earlier, traces of the old tool remain);
+- `missing_tooling`: concerns where neither the kit's markers nor any alternative were detected and the profile provides a strict preset;
 - `pending_conflicts`: number of conflicts to settle.
 
-If the project has nothing of its own (`existing` empty, no `tooling` entries), skip Step 3b.
+If the project has nothing of its own (`existing` empty, no `tooling` entries), skip Step 3b (still run Step 3c in non-local mode for `missing_tooling`, `.editorconfig`, and `.githooks/pre-commit`).
 
 ## Step 2: one profile per stack
 
@@ -80,7 +81,7 @@ Build the context JSON object:
   "commands_override": { "<stack>": { "test": "actual project command" } },
   "stack_versions": { "<stack>": "11.2" },
   "rule_paths": { "<stack>": ["apps/api/**"] },
-  "decisions": { "<stack>": { "<concern>": "keep_existing | adopt_kit | keep_both" } }
+  "decisions": { "<stack>": { "<concern>": "keep_existing | adopt_kit | keep_both | skip" } }
 }
 ```
 
@@ -101,6 +102,18 @@ For every `tooling` entry with status `pending` (and `migration_pending` if the 
 
 Record every answer in the context JSON (Step 3): `"decisions": { "<stack>": { "<concern>": "keep_existing" } }`. They are stored in `.claude/kit.json`, so later `sync` and `doctor` runs do not ask again. To change a decision later: `APPLY decide --project . --profile <stack> --concern <concern> --choice <choice>`, then `APPLY sync --project .` (a migration is only needed when switching to `adopt_kit`).
 
+## Step 3c: offer strict presets for missing tooling (non-local only)
+
+Skip this step completely in `local` mode (`--local` must never modify repo-wide configs).
+
+1. For each entry in `missing_tooling`, **one at a time**, present the kit's strict preset (tool, key AI-guardrail rules, files to create, packages/scripts to add) and ask: **install preset** or **skip**.
+   - If **install**: run `APPLY scaffold-tooling --project . --profile <stack> --concern <concern>` (after `--dry-run` confirmation if desired), apply any printed `SNIPPET` to `pyproject.toml`/`Cargo.toml` with user approval, and install the listed `install_packages` using the project's package manager (respecting `guard.py` supply-chain rules).
+   - If **skip**: record `"<concern>": "skip"` in Step 3 `decisions` so its commands, hooks, and `verify` steps are withheld cleanly.
+2. If root `.editorconfig` is missing, offer `APPLY scaffold-tooling --project . --base-preset editorconfig`.
+3. If no git hook setup (`.husky/`, `.pre-commit-config.yaml`, `lefthook.yml`, `.githooks/`) exists, offer `APPLY scaffold-tooling --project . --base-preset pre-commit` and, if approved, activate it locally with `git config core.hooksPath .githooks`.
+
+Complete Step 3c **before** Step 4 so `apply.py apply` detects the newly scaffolded markers in one pass.
+
 ## Step 4: dry run
 
 Run `APPLY apply --project . --profiles <stacks...> --context - --dry-run` (omit `--profiles` if no stack profile applies yet).
@@ -120,6 +133,7 @@ Provide a brief summary:
 - any new profile saved to the kit (ready to commit in the kit repo: `git -C KIT status`);
 - any `CLAUDE.md` sections still marked `_To be completed._`;
 - a reminder: restart the Claude Code session so hooks are loaded, and verify with `/hooks`;
+- mention `/review` for an isolated pre-commit diff review alongside `/commit` and `/handoff`;
 - if the project's `CLAUDE.md` has a filled "Lessons Learned" section, mention `/claude-kit-learn` to promote durable lessons into the kit.
 
 ## Rules
