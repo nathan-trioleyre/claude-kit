@@ -1,7 +1,8 @@
 ---
 name: claude-kit
-description: Configures Claude Code for the current project (CLAUDE.md, modular rules, permissions, security and formatting hooks) by detecting the stack, then reusing or creating a stack profile in claude-kit. Use when the user types /claude-kit, lands on a new or existing project, or asks to set up Claude for a project.
+description: Configures Claude Code for the current project (CLAUDE.md, modular rules, permissions, security and formatting hooks) by detecting the stack, then reusing or creating a stack profile in claude-kit. Use when the user types /claude-kit, lands on a new or existing project, or asks to set up, check (`doctor`) or update (`sync`) Claude's configuration for a project.
 disable-model-invocation: true
+argument-hint: "[doctor | sync]"
 ---
 
 # /claude-kit: prepare Claude Code for this project
@@ -14,11 +15,16 @@ You are configuring the current project from the user's **claude-kit** repositor
 
 Only write into the project through `apply.py` (except when merging a user-approved `.proposed` file, Step 5).
 
+**Modes** (from `$ARGUMENTS`):
+- empty: full setup, Steps 0 to 6 below.
+- `doctor`: Step 0, then run `APPLY doctor --project .` and explain each `ISSUE` in plain English. Then propose the right fix: `sync` for outdated hooks/settings, a full `/claude-kit` for new stacks or refreshed profiles. Write nothing yourself.
+- `sync`: Step 0, then `APPLY sync --project . --dry-run`, summarize, ask for confirmation, re-run without `--dry-run`. This refreshes kit-managed files only (settings, hooks, agents/commands, `.mcp.json`, `kit.json`); `CLAUDE.md` is not touched. If a hook is reported `skipped ... modified locally`, show the diff against the kit's copy and ask before using `--force-hooks`.
+
 ## Step 0: locate the kit
 
-Use `Read` on `~/.claude/claude-kit.json` (or `~/.claude/claude-bootstrap.json` for older installs) to get `kit_path` and `python`.
+Use `Read` on `~/.claude/claude-kit.json` to get `kit_path` and `python`. (The other kit skills reuse this step.)
 
-If neither file exists: tell the user to run `python install.py` from the kit directory, and stop.
+If it does not exist: tell the user to run `python install.py` (or `python install.py --link`) from the kit directory, and stop.
 
 Hereafter:
 - `KIT` = `kit_path`
@@ -38,7 +44,7 @@ Hereafter:
 Run `APPLY list`, then for each stack in the project:
 
 - **Existing and recent profile** (`stale: false`): use it as-is without re-researching.
-- **Existing but stale profile** (`stale: true`, older than 90 days): tell the user and offer to refresh it now (`/claude-kit-refresh` procedure) or continue with the old one.
+- **Existing but stale profile** (`stale: true`, older than 90 days, which also covers starter profiles shipped unverified): tell the user and offer to refresh it now (`/claude-kit-refresh` procedure) or continue with the old one.
 - **No profile**: create it.
   1. Search official documentation using `WebSearch` and `WebFetch` for **current** best practices (language, framework, tools). Tailor to what the project actually uses (e.g., `uv` or `poetry`, framework version read from the manifest).
   2. Write `profile.json` and `practices.md` following `KIT/profiles/_TEMPLATE/`. Constraints:
@@ -66,6 +72,7 @@ Build the context JSON object:
 
 - Only fill in what you actually read in the code. If you don't know, omit the key: the script inserts `_To be completed._`. Never guess or invent.
 - Include `"rule_paths"` only for multi-stack monorepos when you want stack practices written into path-scoped `.claude/rules/<stack>.md` files instead of inline in `CLAUDE.md`.
+- The kit may also contain an optional `org/` layer (company-wide rules, permissions, MCP servers, agents, commands, see `org/README.md`). `apply.py` applies it automatically; do not duplicate its content in the context JSON.
 - Pass the JSON via stdin using `--context -` (preferred, leaves no temp file) or a temp file outside the project.
 
 ## Step 4: dry run
@@ -86,7 +93,8 @@ Provide a brief summary:
 - what was created or modified in the project (ready to commit);
 - any new profile saved to the kit (ready to commit in the kit repo: `git -C KIT status`);
 - any `CLAUDE.md` sections still marked `_To be completed._`;
-- a reminder: restart the Claude Code session so hooks are loaded, and verify with `/hooks`.
+- a reminder: restart the Claude Code session so hooks are loaded, and verify with `/hooks`;
+- if the project's `CLAUDE.md` has a filled "Lessons Learned" section, mention `/claude-kit-learn` to promote durable lessons into the kit.
 
 ## Rules
 
@@ -94,4 +102,5 @@ Provide a brief summary:
 - Never modify files in `KIT/base/` (hooks, base settings): if you think a change is needed, propose it to the user.
 - Never save an unapproved or unvalidated profile.
 - No secrets in generated files.
+- Re-running on an already configured project is safe: a customized `CLAUDE.md` is left alone unless the kit's own output changed (then a `.proposed` file is written).
 - If no working Python 3 interpreter is available, tell the user: hooks and `apply.py` depend on it.
