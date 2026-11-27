@@ -770,6 +770,59 @@ class TestToolingConflicts(unittest.TestCase):
             data = json.loads(out)
             self.assertEqual(data["matched"], [])
 
+    def test_scaffold_tooling_base_preset_ci_generates_non_destructive_workflow_and_blocks_local(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            kit = kit_with_real_profiles(t, "python", "typescript")
+            apply_bin = apply_bin_of(kit)
+            proj = t / "mono"
+            write(proj / "pyproject.toml", "[project]\nname='api'\n")
+            write(proj / "tsconfig.json", "{}")
+            write(proj / "pnpm-lock.yaml", "")
+
+            res_local = run_apply(apply_bin, "scaffold-tooling", "--project", str(proj),
+                                  "--base-preset", "ci", "--local", check=False)
+            self.assertNotEqual(res_local.returncode, 0)
+            self.assertFalse((proj / ".github" / "workflows" / "ci.yml").exists())
+
+            run_apply(apply_bin, "scaffold-tooling", "--project", str(proj), "--base-preset", "ci")
+            ci_file = proj / ".github" / "workflows" / "ci.yml"
+            self.assertTrue(ci_file.is_file())
+            ci_text = ci_file.read_text(encoding="utf-8")
+            self.assertIn("uv sync", ci_text)
+            self.assertIn("uv run pytest", ci_text)
+            self.assertIn("pnpm install --frozen-lockfile", ci_text)
+            self.assertIn("pnpm test", ci_text)
+
+            # Never overwrites existing ci.yml
+            ci_file.write_text("name: custom\n", encoding="utf-8")
+            out2 = run_apply(apply_bin, "scaffold-tooling", "--project", str(proj), "--base-preset", "ci").stdout
+            self.assertIn("skipped", out2)
+            self.assertEqual(ci_file.read_text(encoding="utf-8"), "name: custom\n")
+
+    def test_real_profiles_expose_targeted_tests_hygiene_and_audit_commands(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            kit = kit_with_real_profiles(t, "python", "typescript", "rust", "csharp-dotnet")
+            apply_bin = apply_bin_of(kit)
+
+            py_proj = t / "py"
+            write(py_proj / "pyproject.toml", "[project]\nname='p'\n")
+            run_apply(apply_bin, "apply", "--project", str(py_proj), "--profiles", "python")
+            py_md = (py_proj / "CLAUDE.md").read_text(encoding="utf-8")
+            self.assertIn("Test (targeted):", py_md)
+            self.assertIn("Dead code / unused deps:", py_md)
+            self.assertIn("Security / dependency audit:", py_md)
+            self.assertLessEqual(len(py_md.splitlines()), 80)
+
+            ts_proj = t / "ts"
+            write(ts_proj / "tsconfig.json", "{}")
+            write(ts_proj / "pnpm-lock.yaml", "")
+            ctx = json.dumps({"decisions": {"typescript": {"package-manager": "keep_existing"}}})
+            run_apply(apply_bin, "apply", "--project", str(ts_proj), "--profiles", "typescript", "--context", "-", input=ctx)
+            ts_md = (ts_proj / "CLAUDE.md").read_text(encoding="utf-8")
+            self.assertIn("pnpm audit", ts_md)
+
 
 if __name__ == "__main__":
     unittest.main()

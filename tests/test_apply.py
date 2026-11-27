@@ -511,6 +511,73 @@ class TestApply(unittest.TestCase):
             self.assertFalse((proj / ".githooks").exists())
             self.assertFalse((proj / ".gitignore").exists())
 
+    def test_codemap_subcommand_and_apply_generates_bounded_codemap(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, apply_bin, proj = self._kit_and_project(tmp)
+            (proj / "src").mkdir()
+            (proj / "src" / "main.py").write_text("print('hi')\n", encoding="utf-8")
+            (proj / "tests").mkdir()
+            (proj / "tests" / "test_main.py").write_text("def test_ok(): pass\n", encoding="utf-8")
+            (proj / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
+            (proj / "node_modules" / "pkg").mkdir(parents=True)
+            (proj / "node_modules" / "pkg" / "index.js").write_text("", encoding="utf-8")
+
+            cm_out = run_apply(apply_bin, "codemap", "--project", str(proj)).stdout
+            self.assertIn("src/", cm_out)
+            self.assertIn("pyproject.toml", cm_out)
+            self.assertNotIn("node_modules", cm_out)
+            self.assertLessEqual(len(cm_out.splitlines()), 60)
+
+            run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python", "--dry-run")
+            self.assertFalse((proj / ".claude" / "codemap.md").exists())
+
+            run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python")
+            codemap = proj / ".claude" / "codemap.md"
+            self.assertTrue(codemap.is_file())
+            kj = json.loads((proj / ".claude" / "kit.json").read_text(encoding="utf-8"))
+            self.assertIn(".claude/codemap.md", kj["managed"])
+
+    def test_stats_subcommand_summarizes_sessions_and_harness_blocks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, apply_bin, proj = self._kit_and_project(tmp)
+            (proj / ".claude" / "logs").mkdir(parents=True)
+
+            # Empty logs work cleanly
+            empty_out = run_apply(apply_bin, "stats", "--project", str(proj)).stdout
+            self.assertIn("No session", empty_out)
+
+            (proj / ".claude" / "logs" / "sessions.jsonl").write_text(
+                "\n".join([
+                    json.dumps({"session_id": "s1", "input_tokens": 1000, "output_tokens": 200, "cost_usd": 0.01}),
+                    json.dumps({"session_id": "s2", "input_tokens": 1500, "output_tokens": 300, "cost_usd": 0.02}),
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            (proj / ".claude" / "logs" / "harness.log").write_text(
+                "\n".join([
+                    *[json.dumps({"hook": "guard", "tool": "Bash", "target": "sudo x", "reason": "sudo is not allowed."}) for _ in range(4)],
+                    json.dumps({"hook": "verify-stop", "tool": "Stop", "target": "pytest", "reason": "exit 1"}),
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            stats = json.loads(run_apply(apply_bin, "stats", "--project", str(proj), "--json").stdout)
+            self.assertEqual(stats["sessions"]["count"], 2)
+            self.assertEqual(stats["sessions"]["input_tokens"], 2500)
+            self.assertEqual(stats["sessions"]["output_tokens"], 500)
+            self.assertAlmostEqual(stats["sessions"]["cost_usd"], 0.03)
+            self.assertEqual(stats["harness"]["total_blocks"], 5)
+            self.assertEqual(len(stats["harness"]["recurring"]), 1)
+            self.assertEqual(stats["harness"]["recurring"][0]["count"], 4)
+
+    def test_apply_syncs_spec_and_debug_skills_and_precommit_supports_gitleaks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            kit, apply_bin, proj = self._kit_and_project(tmp)
+            run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python")
+            self.assertTrue((proj / ".claude" / "skills" / "spec" / "SKILL.md").is_file())
+            self.assertTrue((proj / ".claude" / "skills" / "debug" / "SKILL.md").is_file())
+            pre_commit = (kit / "base" / "presets" / "pre-commit.template").read_text(encoding="utf-8")
+            self.assertIn("gitleaks", pre_commit)
+
 
 if __name__ == "__main__":
     unittest.main()

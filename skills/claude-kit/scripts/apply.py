@@ -65,8 +65,11 @@ COMMAND_LABELS = {
     "install": "Install",
     "dev": "Run dev",
     "test": "Test",
+    "test_related": "Test (targeted)",
     "lint": "Lint",
     "format": "Format",
+    "hygiene": "Dead code / unused deps",
+    "audit": "Security / dependency audit",
     "build": "Build",
     "verify": "Verify (before concluding a task)",
 }
@@ -1419,6 +1422,7 @@ def run(project: Path, profile_names: list, ctx: dict, dry: bool, *, full: bool,
 
     # 4. hooks, agents, commands, rules, skills, MCP servers
     mcp_created = sync_extras(project, managed, dry, report, force_hooks, use_org, local=is_local)
+    sync_codemap(project, managed, dry, report)
 
     # 5. kit.json (metadata, formatting rules, hashes)
     write_kit_json(project, profiles, previous, managed, rendered_state, decisions, effective, dry, report, ctx,
@@ -1581,44 +1585,16 @@ def cmd_doctor(args) -> None:
     else:
         issues.append("MEMORY.md is missing: re-run /claude-kit")
 
-    harness_log = project / ".claude" / "logs" / "harness.log"
-    if harness_log.is_file():
-        counts: dict[str, int] = {}
-        total_blocks = 0
-        for line in harness_log.read_text(encoding="utf-8", errors="ignore").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            total_blocks += 1
-            hook = entry.get("hook", "hook")
-            key = f"{hook}: {entry.get('target', '')}" if hook == "verify-stop" else f"{hook}: {entry.get('reason', '')}"
-            counts[key] = counts.get(key, 0) + 1
-        recurring = [(k, c) for k, c in counts.items() if c >= HARNESS_RECURRING_THRESHOLD]
-        for key, count in sorted(recurring, key=lambda x: -x[1]):
-            issues.append(f"harness.log shows {count}x blocks for '{key}': add an explicit rule + alternative in CLAUDE.md via /claude-kit-learn")
-        if not recurring and total_blocks:
-            oks.append(f"harness.log: {total_blocks} logged block(s), no recurring pattern (>={HARNESS_RECURRING_THRESHOLD})")
+    harness_stats = _read_harness_stats(project)
+    if harness_stats["total_blocks"]:
+        for rec in harness_stats["recurring"]:
+            issues.append(f"harness.log shows {rec['count']}x blocks for '{rec['key']}': add an explicit rule + alternative in CLAUDE.md via /claude-kit-learn")
+        if not harness_stats["recurring"]:
+            oks.append(f"harness.log: {harness_stats['total_blocks']} logged block(s), no recurring pattern (>={HARNESS_RECURRING_THRESHOLD})")
 
-    sessions_log = project / ".claude" / "logs" / "sessions.jsonl"
-    if sessions_log.is_file():
-        s_count, in_tok, out_tok = 0, 0, 0
-        for line in sessions_log.read_text(encoding="utf-8", errors="ignore").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            s_count += 1
-            in_tok += int(rec.get("input_tokens", 0) or 0)
-            out_tok += int(rec.get("output_tokens", 0) or 0)
-        if s_count:
-            oks.append(f"sessions.jsonl: {s_count} session(s) tracked ({in_tok} input / {out_tok} output tokens)")
+    sess_stats = _read_session_stats(project)
+    if sess_stats["count"]:
+        oks.append(f"sessions.jsonl: {sess_stats['count']} session(s) tracked ({sess_stats['input_tokens']} input / {sess_stats['output_tokens']} output tokens)")
     leftovers = [p.relative_to(project).as_posix() for p in project.rglob("*.proposed")
                  if not any(part in IGNORED_DIRS for part in p.relative_to(project).parts)]
     for rel in leftovers:
@@ -1773,6 +1749,14 @@ def cmd_scaffold_tooling(args) -> None:
                     ".githooks/pre-commit", project, args.dry_run, report, executable=True,
                 )
                 report.append("hint      run `git config core.hooksPath .githooks` locally to activate")
+        elif args.base_preset == "ci":
+            ci_dest = project / ".github" / "workflows" / "ci.yml"
+            if ci_dest.exists():
+                report.append("skipped   .github/workflows/ci.yml (already exists)")
+            else:
+                ci_content = render_ci_workflow(project)
+                write_text(ci_dest, ci_content, args.dry_run)
+                report.append("created   .github/workflows/ci.yml")
         emit(report, args.dry_run)
         return
 
@@ -1805,6 +1789,205 @@ def cmd_scaffold_tooling(args) -> None:
         report.append(f"install_packages: {', '.join(pkgs)}")
 
     emit(report, args.dry_run)
+
+
+# ---------------------------------------------------- codemap, stats & CI
+def _read_harness_stats(project: Path) -> dict:
+    harness_log = project / ".claude" / "logs" / "harness.log"
+    counts: dict[str, int] = {}
+    by_hook: dict[str, int] = {}
+    total_blocks = 0
+    if harness_log.is_file():
+        for line in harness_log.read_text(encoding="utf-8", errors="ignore").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            total_blocks += 1
+            hook = entry.get("hook", "hook")
+            by_hook[hook] = by_hook.get(hook, 0) + 1
+            key = f"{hook}: {entry.get('target', '')}" if hook == "verify-stop" else f"{hook}: {entry.get('reason', '')}"
+            counts[key] = counts.get(key, 0) + 1
+    top_blocks = [{"key": k, "count": c} for k, c in sorted(counts.items(), key=lambda x: (-x[1], x[0]))]
+    recurring = [r for r in top_blocks if r["count"] >= HARNESS_RECURRING_THRESHOLD]
+    return {"total_blocks": total_blocks, "by_hook": by_hook, "top_blocks": top_blocks[:10], "recurring": recurring}
+
+
+def _read_session_stats(project: Path) -> dict:
+    sessions_log = project / ".claude" / "logs" / "sessions.jsonl"
+    out = {"count": 0, "input_tokens": 0, "output_tokens": 0,
+           "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0, "cost_usd": 0.0}
+    if sessions_log.is_file():
+        for line in sessions_log.read_text(encoding="utf-8", errors="ignore").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            out["count"] += 1
+            for k in ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"):
+                out[k] += int(rec.get(k, 0) or 0)
+            out["cost_usd"] += float(rec.get("cost_usd", 0.0) or 0.0)
+    out["cost_usd"] = round(out["cost_usd"], 6)
+    return out
+
+
+def render_codemap(project: Path, max_lines: int = 55) -> str:
+    """Build a compact <=60-line project index so sessions avoid redundant tree scans."""
+    rel_files = collect_project_files(project, max_depth=2)
+    top_dirs = sorted({rp.split("/", 1)[0] for rp in rel_files if "/" in rp})
+    root_files = sorted(rp for rp in rel_files if "/" not in rp)
+    manifests = [f for f in rel_files if f.rsplit("/", 1)[-1] in {
+        "pyproject.toml", "package.json", "tsconfig.json", "angular.json", "Cargo.toml",
+        "Dockerfile", "docker-compose.yml", "compose.yml", "Makefile", "README.md",
+    } or f.endswith((".sln", ".slnx", ".csproj"))]
+    details = detect_details(project)
+
+    lines = [
+        f"# Codemap: {project.name}",
+        "",
+        "<!-- Auto-generated by claude-kit to minimize exploration tokens. -->",
+        "",
+        "## Top-level structure",
+    ]
+    for d in top_dirs[:15]:
+        children = sorted({rp.split("/", 2)[1] for rp in rel_files if rp.startswith(d + "/") and rp.count("/") >= 2})
+        suffix = f" ({', '.join(children[:5])})" if children else ""
+        lines.append(f"- `{d}/`{suffix}")
+    if root_files:
+        lines.append(f"- Root files: {', '.join(f'`{f}`' for f in root_files[:12])}")
+    if manifests:
+        lines.extend(["", "## Key manifests", *[f"- `{m}`" for m in sorted(set(manifests))[:12]]])
+    if details:
+        lines.extend(["", "## Detected stacks"])
+        for stack, info in details.items():
+            lines.append(f"- `{stack}`: {', '.join(f'`{d}`' for d in info['dirs'][:5])}")
+    return "\n".join(lines[:max_lines]) + "\n"
+
+
+def sync_codemap(project: Path, managed: dict, dry: bool, report: list) -> None:
+    label = ".claude/codemap.md"
+    dest = project / label
+    content = render_codemap(project)
+    src_hash = sha256_text(content)
+    if not dest.exists():
+        write_text(dest, content, dry)
+        managed[label] = src_hash
+        report.append(f"created   {label}")
+        return
+    dest_hash = sha256_bytes(dest.read_bytes())
+    if dest_hash == src_hash:
+        managed[label] = src_hash
+        report.append(f"unchanged {label}")
+    elif managed.get(label) == dest_hash:
+        write_text(dest, content, dry)
+        managed[label] = src_hash
+        report.append(f"upgraded  {label}")
+    else:
+        report.append(f"skipped   {label} modified locally")
+
+
+def cmd_codemap(args) -> None:
+    project = Path(args.project).resolve()
+    content = render_codemap(project)
+    if args.write:
+        write_text(project / ".claude" / "codemap.md", content, args.dry_run)
+    print(content, end="")
+
+
+def cmd_stats(args) -> None:
+    project = Path(args.project).resolve()
+    sessions = _read_session_stats(project)
+    harness = _read_harness_stats(project)
+    data = {"sessions": sessions, "harness": harness}
+    if args.json:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+        return
+    if sessions["count"] == 0 and harness["total_blocks"] == 0:
+        print("No session or harness logs recorded yet.")
+        return
+    lines = [
+        f"Sessions : {sessions['count']} | input={sessions['input_tokens']} | output={sessions['output_tokens']} | cost=${sessions['cost_usd']:.4f}",
+        f"Harness  : {harness['total_blocks']} block(s) ({', '.join(f'{k}={v}' for k, v in sorted(harness['by_hook'].items())) or 'none'})",
+    ]
+    for b in harness["top_blocks"][:5]:
+        flag = " [RECURRING]" if b["count"] >= HARNESS_RECURRING_THRESHOLD else ""
+        lines.append(f"  - {b['count']}x {b['key']}{flag}")
+    print("\n".join(lines))
+
+
+def _ci_setup_steps(stack: str, install_cmd: str) -> list:
+    if stack == "python":
+        steps = [
+            "      - uses: actions/setup-python@v5\n        with:\n          python-version: '3.12'",
+        ]
+        if "uv " in install_cmd:
+            steps.append("      - uses: astral-sh/setup-uv@v5")
+        return steps
+    if stack in ("typescript", "nextjs", "angular"):
+        steps = []
+        if "pnpm " in install_cmd:
+            steps.append("      - uses: pnpm/action-setup@v4\n        with:\n          version: 9")
+        steps.append("      - uses: actions/setup-node@v4\n        with:\n          node-version: '22'")
+        return steps
+    if stack == "csharp-dotnet":
+        return ["      - uses: actions/setup-dotnet@v4\n        with:\n          dotnet-version: '9.0.x'"]
+    if stack == "rust":
+        return ["      - uses: dtolnay/rust-toolchain@stable\n        with:\n          components: clippy, rustfmt"]
+    return []
+
+
+def render_ci_workflow(project: Path) -> str:
+    kit_json = load_kit_json(project)
+    names = sorted(set(detect_matched(project)) | set(kit_json.get("profiles", {})))
+    names = [n for n in names if (PROFILES / n / "profile.json").is_file()]
+    raw = [load_profile(n) for n in names]
+    analysis = analyze_tooling(project, raw, kit_json.get("decisions", {}))
+    effs = [effective_profile(p, analysis) for p in raw]
+
+    lines = [
+        "name: CI",
+        "",
+        "on:",
+        "  push:",
+        "    branches: [main, master]",
+        "  pull_request:",
+        "",
+        "jobs:",
+    ]
+    if not effs:
+        lines.extend([
+            "  verify:",
+            "    runs-on: ubuntu-latest",
+            "    steps:",
+            "      - uses: actions/checkout@v4",
+            "      - run: echo \"Configure verify command\"",
+        ])
+        return "\n".join(lines) + "\n"
+
+    for p in effs:
+        stack = p["stack"]
+        job_id = re.sub(r"[^a-zA-Z0-9_-]", "-", stack)
+        cmds = p.get("commands", {})
+        install_cmd = cmds.get("install") or ""
+        verify_cmd = cmds.get("verify") or cmds.get("lint") or cmds.get("test") or ""
+        lines.extend([
+            f"  {job_id}:",
+            "    runs-on: ubuntu-latest",
+            "    steps:",
+            "      - uses: actions/checkout@v4",
+            *_ci_setup_steps(stack, install_cmd),
+        ])
+        if install_cmd:
+            lines.append(f"      - run: {install_cmd}")
+        if verify_cmd:
+            lines.append(f"      - run: {verify_cmd}")
+    return "\n".join(lines) + "\n"
 
 
 # ------------------------------------------------------------------------ main
@@ -1858,10 +2041,21 @@ def main() -> None:
     p_scaffold.add_argument("--project", default=".")
     p_scaffold.add_argument("--profile")
     p_scaffold.add_argument("--concern")
-    p_scaffold.add_argument("--base-preset", choices=["editorconfig", "pre-commit"])
+    p_scaffold.add_argument("--base-preset", choices=["editorconfig", "pre-commit", "ci"])
     p_scaffold.add_argument("--dry-run", action="store_true")
     p_scaffold.add_argument("--local", action="store_true")
     p_scaffold.set_defaults(func=cmd_scaffold_tooling)
+
+    p_codemap = sub.add_parser("codemap", help="generate a compact project codemap")
+    p_codemap.add_argument("--project", default=".")
+    p_codemap.add_argument("--write", action="store_true", help="write .claude/codemap.md")
+    p_codemap.add_argument("--dry-run", action="store_true")
+    p_codemap.set_defaults(func=cmd_codemap)
+
+    p_stats = sub.add_parser("stats", help="summarize session tokens/costs and harness blocks")
+    p_stats.add_argument("--project", default=".")
+    p_stats.add_argument("--json", action="store_true")
+    p_stats.set_defaults(func=cmd_stats)
 
     args = parser.parse_args()
     args.func(args)
