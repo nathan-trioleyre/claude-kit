@@ -1,0 +1,186 @@
+{
+  "stack": "nextjs",
+  "display_name": "Next.js (App Router + TypeScript)",
+  "detect": [
+    "next.config.*"
+  ],
+  "supersedes": [
+    "typescript"
+  ],
+  "paths": [],
+  "commands": {
+    "install": "npm ci",
+    "dev": "npm run dev",
+    "test": "npm test",
+    "lint": "npm run lint",
+    "format": null,
+    "build": "npm run build",
+    "verify": "npm run lint && tsc --noEmit && npm run build"
+  },
+  "permissions_allow": [
+    "Bash(npm ci)",
+    "Bash(npm test*)",
+    "Bash(npm run build*)",
+    "Bash(npm run lint*)",
+    "Bash(tsc --noEmit*)"
+  ],
+  "format_rules": [
+    {
+      "extensions": [
+        ".ts",
+        ".tsx",
+        ".js",
+        ".jsx",
+        ".css",
+        ".json"
+      ],
+      "command": [
+        "prettier",
+        "--write",
+        "{file}"
+      ]
+    }
+  ],
+  "tooling": [
+    {
+      "concern": "formatter",
+      "kit": {
+        "name": "prettier",
+        "markers": [
+          {
+            "file": ".prettierrc*"
+          },
+          {
+            "file": "prettier.config.*"
+          },
+          {
+            "file": "package.json",
+            "contains": "\"prettier\""
+          }
+        ],
+        "commands": [
+          "format"
+        ],
+        "format_rules": true
+      },
+      "alternatives": [
+        {
+          "name": "biome",
+          "markers": [
+            {
+              "file": "biome.json"
+            },
+            {
+              "file": "biome.jsonc"
+            }
+          ],
+          "hooks": [
+            "biome"
+          ],
+          "format_rule": {
+            "extensions": [
+              ".ts",
+              ".tsx",
+              ".js",
+              ".jsx",
+              ".css",
+              ".json"
+            ],
+            "command": [
+              "biome",
+              "format",
+              "--write",
+              "{file}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "concern": "package-manager",
+      "kit": {
+        "name": "npm",
+        "markers": [
+          {
+            "file": "package-lock.json"
+          }
+        ],
+        "commands": [
+          "install",
+          "dev",
+          "test",
+          "lint",
+          "build",
+          "verify"
+        ],
+        "permissions": [
+          "Bash(npm ci)",
+          "Bash(npm test*)",
+          "Bash(npm run build*)",
+          "Bash(npm run lint*)"
+        ],
+        "practice_terms": [
+          "npm ci",
+          "package-lock.json"
+        ]
+      },
+      "alternatives": [
+        {
+          "name": "pnpm",
+          "markers": [
+            {
+              "file": "pnpm-lock.yaml"
+            }
+          ],
+          "hooks": [
+            "pnpm"
+          ],
+          "commands": {
+            "install": "pnpm install --frozen-lockfile",
+            "dev": "pnpm dev",
+            "test": "pnpm test",
+            "lint": "pnpm lint",
+            "build": "pnpm build",
+            "verify": "pnpm lint && tsc --noEmit && pnpm build"
+          },
+          "permissions_allow": [
+            "Bash(pnpm install*)",
+            "Bash(pnpm test*)",
+            "Bash(pnpm run build*)",
+            "Bash(pnpm run lint*)"
+          ]
+        },
+        {
+          "name": "yarn",
+          "markers": [
+            {
+              "file": "yarn.lock"
+            }
+          ],
+          "hooks": [
+            "yarn"
+          ]
+        },
+        {
+          "name": "bun",
+          "markers": [
+            {
+              "file": "bun.lock"
+            },
+            {
+              "file": "bun.lockb"
+            }
+          ],
+          "hooks": [
+            "bun"
+          ]
+        }
+      ]
+    }
+  ],
+  "sources": [
+    "https://nextjs.org/docs/app/getting-started",
+    "https://nextjs.org/docs/app/building-your-application/rendering/composition-patterns"
+  ],
+  "last_verified": "2026-11-27"
+}

@@ -1,0 +1,29 @@
+{
+  "stack": "docker",
+  "display_name": "Docker / Compose",
+  "detect": [
+    "Dockerfile",
+    "Dockerfile.*",
+    "docker-compose*.yml",
+    "docker-compose*.yaml",
+    "compose.yml",
+    "compose.yaml"
+  ],
+  "paths": [],
+  "commands": {
+    "install": null,
+    "dev": "docker compose up --build",
+    "test": null,
+    "lint": "docker compose config --quiet",
+    "format": null,
+    "build": "docker build .",
+    "verify": null
+  },
+  "permissions_allow": [],
+  "format_rules": [],
+  "sources": [
+    "https://docs.docker.com/build/building/best-practices/",
+    "https://docs.docker.com/compose/compose-file/"
+  ],
+  "last_verified": "2026-11-27"
+}

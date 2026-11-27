@@ -1,0 +1,7 @@
+- Use multi-stage builds to keep final runtime images small and free of build toolchains.
+- Pin base image tags (prefer specific versions or `-slim`/`-alpine` digests over floating `latest`).
+- Maintain a `.dockerignore` excluding `.git`, `node_modules`, `.venv`, and `.env*` files.
+- Run containers as a non-root `USER` in production Dockerfiles.
+- Order `COPY` and `RUN` layers from least to most frequently changing (`package*.json`/lockfile before source) for cache reuse.
+- Never bake secrets into `ENV`, `ARG`, or `COPY`; pass runtime secrets via environment variables or Compose secrets.
+- Validate Compose changes with `docker compose config --quiet` before committing.

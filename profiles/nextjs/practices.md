@@ -1,0 +1,6 @@
+- Default to Server Components in `app/`; add `'use client'` only at leaf interactive components.
+- Never import server-only modules, DB clients, or non-`NEXT_PUBLIC_*` secrets into Client Components.
+- Validate inputs and auth inside Server Actions and Route Handlers; never trust client-supplied IDs or roles.
+- Use `next/image` and `next/link` for images and internal navigation instead of raw `<img>` or `<a>`.
+- Keep TypeScript `strict: true` and avoid `any`.
+- Use `npm ci` for reproducible installs; do not edit `package-lock.json` by hand.

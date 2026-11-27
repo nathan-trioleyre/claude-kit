@@ -1,0 +1,41 @@
+{
+  "stack": "rust",
+  "display_name": "Rust (Cargo + Clippy + rustfmt)",
+  "detect": [
+    "Cargo.toml"
+  ],
+  "paths": [],
+  "commands": {
+    "install": "cargo fetch",
+    "dev": "cargo run",
+    "test": "cargo test",
+    "lint": "cargo clippy --all-targets -- -D warnings",
+    "format": "cargo fmt",
+    "build": "cargo build",
+    "verify": "cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test"
+  },
+  "permissions_allow": [
+    "Bash(cargo check*)",
+    "Bash(cargo test*)",
+    "Bash(cargo clippy*)",
+    "Bash(cargo fmt*)",
+    "Bash(cargo build*)"
+  ],
+  "format_rules": [
+    {
+      "extensions": [
+        ".rs"
+      ],
+      "command": [
+        "rustfmt",
+        "{file}"
+      ]
+    }
+  ],
+  "sources": [
+    "https://doc.rust-lang.org/cargo/",
+    "https://doc.rust-lang.org/clippy/",
+    "https://rust-lang.github.io/rustfmt/"
+  ],
+  "last_verified": "2026-11-27"
+}
