@@ -176,6 +176,45 @@ class TestGuardHook(unittest.TestCase):
                 r = run_guard({"tool_name": "Bash", "tool_input": {"command": cmd}})
                 self.assertEqual(r.returncode, 2, f"Expected block for: {cmd}")
 
+    def test_blocks_nested_shells_secret_reads_and_bulk_deletes(self):
+        blocked = [
+            'bash -c "rm -rf /"',
+            "sh -lc 'git push --force'",
+            'pwsh -Command "Remove-Item -Recurse -Force C:/Windows"',
+            "cat .env",
+            "head -n 3 config/.env.production",
+            "echo TOKEN=1 > .env",
+            "find . -name '*.log' -delete",
+            "git branch -D old-feature",
+            "git push origin --delete old-feature",
+            "git restore src/app.py",
+        ]
+        for command in blocked:
+            res = run_guard({"tool_name": "Bash", "tool_input": {"command": command}})
+            self.assertEqual(res.returncode, 2, command)
+
+    def test_allows_normal_commands(self):
+        allowed = [
+            "git status",
+            "git log --oneline -5",
+            "git branch --list",
+            "git branch -d merged-feature",
+            "git restore --staged file.py",
+            "cat .env.example",
+            "ls -la",
+            'bash -c "echo hello"',
+            "grep -rn TODO src/",
+            "git push origin main",
+        ]
+        for command in allowed:
+            res = run_guard({"tool_name": "Bash", "tool_input": {"command": command}})
+            self.assertEqual(res.returncode, 0, command + " " + res.stderr)
+
+    def test_hook_files_carry_a_version_marker(self):
+        for name in ("guard.py", "format.py", "run-hook.sh"):
+            text = (KIT / "base" / "hooks" / name).read_text(encoding="utf-8")
+            self.assertIn("claude-kit-hook-version:", text, name)
+
 
 class TestFormatHook(unittest.TestCase):
     def test_runs_all_matching_rules_and_resolves_project_local_bins(self):

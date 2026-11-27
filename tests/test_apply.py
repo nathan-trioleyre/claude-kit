@@ -40,12 +40,25 @@ def make_profile(kit_root: Path, stack: str = "python", *, detect=None, paths=No
     (prof / "practices.md").write_text(practices, encoding="utf-8")
 
 
+def copy_kit(dest: Path) -> None:
+    """Copy the kit without tests/.git and WITHOUT the starter profiles (tests build their own)."""
+    shutil.copytree(KIT, dest, ignore=shutil.ignore_patterns("tests", "__pycache__", ".git"))
+    for folder in (dest / "profiles").iterdir():
+        if folder.is_dir() and not folder.name.startswith("_"):
+            shutil.rmtree(folder)
+
+
+def run_apply(apply_bin: Path, *args, input=None, check=True):
+    return subprocess.run([sys.executable, str(apply_bin), *args], input=input, text=True,
+                          capture_output=True, check=check)
+
+
 class TestApply(unittest.TestCase):
     def test_copied_apply_resolves_kit_via_config(self):
         with tempfile.TemporaryDirectory() as tmp:
             t = Path(tmp)
             kit_copy = t / "kit-copy"
-            shutil.copytree(KIT, kit_copy, ignore=shutil.ignore_patterns("tests", "__pycache__"))
+            copy_kit(kit_copy)
             make_profile(kit_copy, "python")
 
             home_dir = t / "home"
@@ -64,7 +77,7 @@ class TestApply(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             t = Path(tmp)
             kit_copy = t / "kit"
-            shutil.copytree(KIT, kit_copy, ignore=shutil.ignore_patterns("tests", "__pycache__"))
+            copy_kit(kit_copy)
             make_profile(kit_copy, "python", detect=["pyproject.toml"])
             make_profile(kit_copy, "node", detect=["package.json"])
 
@@ -103,7 +116,7 @@ class TestApply(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             t = Path(tmp)
             kit_copy = t / "kit"
-            shutil.copytree(KIT, kit_copy, ignore=shutil.ignore_patterns("tests", "__pycache__"))
+            copy_kit(kit_copy)
             make_profile(kit_copy, "python")
             apply_bin = kit_copy / "skills" / "claude-kit" / "scripts" / "apply.py"
 
@@ -144,7 +157,7 @@ class TestApply(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             t = Path(tmp)
             kit_copy = t / "kit"
-            shutil.copytree(KIT, kit_copy, ignore=shutil.ignore_patterns("tests", "__pycache__"))
+            copy_kit(kit_copy)
             make_profile(kit_copy, "python", paths=["backend/**/*.py"], practices="- Use ruff.\n")
             apply_bin = kit_copy / "skills" / "claude-kit" / "scripts" / "apply.py"
 
@@ -161,8 +174,17 @@ class TestApply(unittest.TestCase):
             self.assertIn("backend/**/*.py", content)
             self.assertIn("Use ruff.", content)
 
-            # Customize rule file and re-run: must write .proposed, not overwrite
+            # Customize rule file and re-run with the same kit output: left alone, no noise
             rule_file.write_text("# Custom rule\n", encoding="utf-8")
+            subprocess.check_output(
+                [sys.executable, str(apply_bin), "apply", "--project", str(proj), "--profiles", "python"],
+                text=True,
+            )
+            self.assertEqual(rule_file.read_text(encoding="utf-8"), "# Custom rule\n")
+            self.assertFalse((proj / ".claude" / "rules" / "python.md.proposed").exists())
+
+            # The kit's profile changes: now a .proposed file appears, still no overwrite
+            make_profile(kit_copy, "python", paths=["backend/**/*.py"], practices="- Use ruff and mypy.\n")
             subprocess.check_output(
                 [sys.executable, str(apply_bin), "apply", "--project", str(proj), "--profiles", "python"],
                 text=True,
@@ -174,7 +196,7 @@ class TestApply(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             t = Path(tmp)
             kit_copy = t / "kit"
-            shutil.copytree(KIT, kit_copy, ignore=shutil.ignore_patterns("tests", "__pycache__"))
+            copy_kit(kit_copy)
             make_profile(kit_copy, "python")
             apply_bin = kit_copy / "skills" / "claude-kit" / "scripts" / "apply.py"
 
@@ -188,6 +210,99 @@ class TestApply(unittest.TestCase):
             self.assertNotEqual(bad.returncode, 0)
             self.assertIn("Bash(*)", bad.stdout + bad.stderr)
             self.assertIn("15", bad.stdout + bad.stderr)
+
+    def _kit_and_project(self, tmp):
+        t = Path(tmp)
+        kit = t / "kit"
+        copy_kit(kit)
+        make_profile(kit, "python")
+        proj = t / "proj"
+        proj.mkdir()
+        return kit, kit / "skills" / "claude-kit" / "scripts" / "apply.py", proj
+
+    def test_rerun_after_user_edit_is_silent_when_kit_output_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            kit, apply_bin, proj = self._kit_and_project(tmp)
+            run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python")
+            (proj / "CLAUDE.md").write_text("# My own edits\n", encoding="utf-8")
+            out = run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python").stdout
+            self.assertIn("customized by you", out)
+            self.assertFalse((proj / "CLAUDE.md.proposed").exists())
+            self.assertEqual((proj / "CLAUDE.md").read_text(encoding="utf-8"), "# My own edits\n")
+
+    def test_hook_upgrade_only_when_unmodified_then_sync_and_doctor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            kit, apply_bin, proj = self._kit_and_project(tmp)
+            run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python")
+            self.assertEqual(run_apply(apply_bin, "doctor", "--project", str(proj), check=False).returncode, 1)  # CLAUDE.md placeholders
+
+            guard_src = kit / "base" / "hooks" / "guard.py"
+            guard_src.write_text(guard_src.read_text(encoding="utf-8") + "\n# kit change\n", encoding="utf-8")
+            doctor = run_apply(apply_bin, "doctor", "--project", str(proj), check=False)
+            self.assertIn("outdated", doctor.stdout)
+
+            out = run_apply(apply_bin, "sync", "--project", str(proj)).stdout
+            self.assertIn("upgraded  .claude/hooks/guard.py", out)
+            self.assertIn("# kit change", (proj / ".claude" / "hooks" / "guard.py").read_text(encoding="utf-8"))
+
+            # a local modification is protected, unless forced
+            local = proj / ".claude" / "hooks" / "guard.py"
+            local.write_text("# my local hook\n", encoding="utf-8")
+            guard_src.write_text(guard_src.read_text(encoding="utf-8") + "# second change\n", encoding="utf-8")
+            out = run_apply(apply_bin, "sync", "--project", str(proj)).stdout
+            self.assertIn("skipped", out)
+            self.assertEqual(local.read_text(encoding="utf-8"), "# my local hook\n")
+            out = run_apply(apply_bin, "sync", "--project", str(proj), "--force-hooks").stdout
+            self.assertIn("forced", out)
+            self.assertIn("# second change", local.read_text(encoding="utf-8"))
+
+    def test_sync_requires_configured_project(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            kit, apply_bin, proj = self._kit_and_project(tmp)
+            res = run_apply(apply_bin, "sync", "--project", str(proj), check=False)
+            self.assertNotEqual(res.returncode, 0)
+
+    def test_org_layer_rules_permissions_mcp_agents(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            kit, apply_bin, proj = self._kit_and_project(tmp)
+            org = kit / "org"
+            (org / "agents").mkdir(parents=True)
+            (org / "rules.md").write_text("- Org rule: ticket id in every commit.\n", encoding="utf-8")
+            (org / "settings.json").write_text(json.dumps({"permissions": {"allow": ["Bash(gh pr view*)"], "deny": ["Bash(gh repo delete*)"]}}), encoding="utf-8")
+            (org / "mcp.json").write_text(json.dumps({"mcpServers": {"jira": {"type": "http", "url": "https://example.test/mcp"}}}), encoding="utf-8")
+            (org / "agents" / "reviewer.md").write_text("---\nname: reviewer\n---\nReview code.\n", encoding="utf-8")
+            (proj / ".mcp.json").write_text(json.dumps({"mcpServers": {"mine": {"command": "x"}}}), encoding="utf-8")
+
+            run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python")
+            self.assertIn("Org rule: ticket id", (proj / "CLAUDE.md").read_text(encoding="utf-8"))
+            settings = json.loads((proj / ".claude" / "settings.json").read_text(encoding="utf-8"))
+            self.assertIn("Bash(gh pr view*)", settings["permissions"]["allow"])
+            self.assertIn("Bash(gh repo delete*)", settings["permissions"]["deny"])
+            mcp = json.loads((proj / ".mcp.json").read_text(encoding="utf-8"))
+            self.assertEqual(set(mcp["mcpServers"]), {"mine", "jira"})
+            self.assertTrue((proj / ".claude" / "agents" / "reviewer.md").is_file())
+
+            proj2 = Path(tmp) / "proj2"
+            proj2.mkdir()
+            run_apply(apply_bin, "apply", "--project", str(proj2), "--profiles", "python", "--no-org")
+            self.assertNotIn("Org rule", (proj2 / "CLAUDE.md").read_text(encoding="utf-8"))
+            self.assertFalse((proj2 / ".mcp.json").exists())
+
+    def test_validate_rejects_arbitrary_execution_permissions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            kit, apply_bin, _ = self._kit_and_project(tmp)
+            for rule in ("Bash(python *)", "Bash(npx *)", "Bash(bash:*)", "Bash(* install)", "Bash(find *)", "Bash(curl *)"):
+                make_profile(kit, "bad", permissions_allow=[rule])
+                res = run_apply(apply_bin, "validate", "--profiles", "bad", check=False)
+                self.assertNotEqual(res.returncode, 0, rule)
+            make_profile(kit, "bad", permissions_allow=["Bash(pytest *)", "Bash(npm run build*)"])
+            self.assertEqual(run_apply(apply_bin, "validate", "--profiles", "bad", check=False).returncode, 0)
+
+    def test_starter_profiles_validate(self):
+        res = subprocess.run([sys.executable, str(APPLY), "validate"], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        names = {p["stack"] for p in json.loads(subprocess.check_output([sys.executable, str(APPLY), "list"], text=True))}
+        self.assertTrue({"python", "csharp-dotnet", "angular"} <= names)
 
 
 if __name__ == "__main__":
