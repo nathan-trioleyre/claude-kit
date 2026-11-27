@@ -12,6 +12,10 @@
     "build": "command or null",
     "verify": "the single command to run before saying 'done'"
   },
+  "verify_steps": [
+    { "cmd": "lint-command", "concern": "linter" },
+    { "cmd": "test-command", "concern": null }
+  ],
   "permissions_allow": ["Bash(test-command *)"],
   "format_rules": [
     { "extensions": [".ext"], "command": ["formatter", "{file}"] }
@@ -19,7 +23,14 @@
   "tooling": [
     {
       "concern": "formatter",
-      "kit": { "name": "kit-formatter", "markers": [{ "file": "kit-formatter.toml" }], "commands": ["format"], "format_rules": true },
+      "kit": {
+        "name": "kit-formatter",
+        "markers": [{ "file": "kit-formatter.toml" }],
+        "commands": ["format"],
+        "format_rules": true,
+        "preset_files": [{ "src": "presets/kit-formatter.toml", "dest": "kit-formatter.toml", "mode": "create" }],
+        "install_packages": ["kit-formatter"]
+      },
       "alternatives": [
         { "name": "other-formatter", "markers": [{ "file": "config.toml", "contains": "[other-formatter]" }], "hooks": ["other-formatter"] }
       ]

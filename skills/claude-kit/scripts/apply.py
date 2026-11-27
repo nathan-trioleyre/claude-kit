@@ -236,15 +236,7 @@ def validate_profile_folder(folder: Path) -> list:
             errors.append(f"{folder.name}: 'format_rules' must be a list")
         else:
             for idx, rule in enumerate(fmt_rules):
-                if not isinstance(rule, dict):
-                    errors.append(f"{folder.name}: format_rules[{idx}] must be an object")
-                    continue
-                exts = rule.get("extensions")
-                cmd = rule.get("command")
-                if not isinstance(exts, list) or not exts or not all(isinstance(e, str) and e.startswith(".") for e in exts):
-                    errors.append(f"{folder.name}: format_rules[{idx}].extensions must list '.ext' strings")
-                if not isinstance(cmd, list) or not cmd or "{file}" not in cmd:
-                    errors.append(f"{folder.name}: format_rules[{idx}].command must include '{{file}}'")
+                errors.extend(_validate_tool_rule(f"{folder.name}: format_rules[{idx}]", rule))
 
     sources = data.get("sources")
     if sources is not None:
@@ -267,7 +259,28 @@ def validate_profile_folder(folder: Path) -> list:
         errors.append(f"{folder.name}: optional 'supersedes' must be a list of non-empty stack names")
 
     if "tooling" in data:
-        errors.extend(validate_tooling(folder.name, data["tooling"]))
+        errors.extend(validate_tooling(folder.name, data["tooling"], folder))
+
+    if "verify_steps" in data:
+        declared_concerns = {
+            item.get("concern")
+            for item in (data.get("tooling") or [])
+            if isinstance(item, dict) and isinstance(item.get("concern"), str)
+        }
+        vsteps = data["verify_steps"]
+        if not isinstance(vsteps, list) or not vsteps:
+            errors.append(f"{folder.name}: 'verify_steps' must be a non-empty list")
+        else:
+            for idx, step in enumerate(vsteps):
+                if not isinstance(step, dict) or not isinstance(step.get("cmd"), str) or not step["cmd"].strip():
+                    errors.append(f"{folder.name}: verify_steps[{idx}] needs a non-empty 'cmd' string")
+                    continue
+                concern = step.get("concern")
+                if concern is not None and (not isinstance(concern, str) or concern not in declared_concerns):
+                    errors.append(f"{folder.name}: verify_steps[{idx}].concern '{concern}' is not declared in tooling")
+                cmd_key = step.get("command_key")
+                if cmd_key is not None and (not isinstance(cmd_key, str) or cmd_key not in COMMAND_LABELS):
+                    errors.append(f"{folder.name}: verify_steps[{idx}].command_key '{cmd_key}' is not a valid command key")
 
     practices_file = folder / "practices.md"
     if not practices_file.is_file():
@@ -309,8 +322,105 @@ def _perm_errors(prefix: str, rules) -> list:
     return [f"{prefix}: {reason}" for reason in (unsafe_permission(r) for r in rules) if reason]
 
 
-def validate_tooling(name: str, tooling) -> list:
-    """Validate the optional 'tooling' section (conflict detection against tools a project already uses)."""
+_SECRET_DEST_NAMES = {"credentials", "credentials.json", ".npmrc", ".pypirc"}
+_SAFE_ENV_DEST_SUFFIXES = (".env.example", ".env.sample", ".env.template", ".env.dist")
+
+
+def _is_unsafe_dest_path(dest: str) -> bool:
+    norm = dest.replace("\\", "/").strip()
+    p = Path(norm)
+    if not norm or p.is_absolute() or norm.startswith(("/", "\\")) or re.match(r"^[a-zA-Z]:", norm):
+        return True
+    if ".." in p.parts:
+        return True
+    name = p.name.lower()
+    if not name:
+        return True
+    if name.endswith(_SAFE_ENV_DEST_SUFFIXES):
+        return False
+    if name == ".env" or name.startswith(".env."):
+        return True
+    if name.endswith((".pem", ".key", ".p12", ".pfx")) or name.startswith(("id_rsa", "id_ed25519")):
+        return True
+    return name in _SECRET_DEST_NAMES
+
+
+def _validate_tool_rule(prefix: str, rule, *, check_exec: bool = False) -> list:
+    if not isinstance(rule, dict):
+        return [f"{prefix} must be an object"]
+    errors = []
+    exts = rule.get("extensions")
+    fnames = rule.get("filenames")
+    cmd = rule.get("command")
+    if exts is None and fnames is None:
+        errors.append(f"{prefix} must define 'extensions' or 'filenames'")
+    if exts is not None and (not isinstance(exts, list) or not exts or not all(isinstance(e, str) and e.startswith(".") for e in exts)):
+        errors.append(f"{prefix}.extensions must list '.ext' strings")
+    if fnames is not None and (not isinstance(fnames, list) or not fnames or not all(isinstance(f, str) and f for f in fnames)):
+        errors.append(f"{prefix}.filenames must list non-empty filename globs")
+    if not isinstance(cmd, list) or not cmd or not all(isinstance(c, str) and c for c in cmd) or "{file}" not in cmd:
+        errors.append(f"{prefix}.command must be a non-empty list of strings including '{{file}}'")
+    elif check_exec:
+        exe = Path(cmd[0].replace("\\", "/")).name.lower()
+        if exe.endswith(".exe"):
+            exe = exe[:-4]
+        if exe in UNSAFE_BASH_COMMANDS:
+            errors.append(f"{prefix}.command uses unsafe executable '{exe}'")
+    return errors
+
+
+def _validate_preset_files(prefix: str, folder: Path | None, items) -> list:
+    if not isinstance(items, list):
+        return [f"{prefix}.preset_files must be a list"]
+    errors = []
+    folder_resolved = folder.resolve() if folder else None
+    for i, item in enumerate(items):
+        ipre = f"{prefix}.preset_files[{i}]"
+        if not isinstance(item, dict):
+            errors.append(f"{ipre} must be an object")
+            continue
+        src = item.get("src")
+        dest = item.get("dest")
+        mode = item.get("mode", "create")
+        if mode not in ("create", "snippet"):
+            errors.append(f"{ipre}.mode must be 'create' or 'snippet'")
+        if not isinstance(src, str) or not src:
+            errors.append(f"{ipre}.src must be a non-empty relative path")
+        else:
+            src_norm = src.replace("\\", "/")
+            if (Path(src_norm).is_absolute() or src_norm.startswith("/")
+                    or re.match(r"^[a-zA-Z]:", src_norm) or ".." in Path(src_norm).parts):
+                errors.append(f"{ipre}.src '{src}' must stay inside the profile folder")
+            elif folder_resolved is not None:
+                resolved = (folder_resolved / src_norm).resolve()
+                if not resolved.is_relative_to(folder_resolved) or not resolved.is_file():
+                    errors.append(f"{ipre}.src '{src}' does not exist inside {folder.name}/")
+        if not isinstance(dest, str) or _is_unsafe_dest_path(dest):
+            errors.append(f"{ipre}.dest '{dest}' is not a safe relative project path")
+    return errors
+
+
+def _validate_install_packages(prefix: str, pkgs) -> list:
+    if isinstance(pkgs, list):
+        if not all(isinstance(p, str) and p for p in pkgs):
+            return [f"{prefix}.install_packages must list non-empty strings"]
+        return []
+    if isinstance(pkgs, dict):
+        for pm, items in pkgs.items():
+            if not isinstance(pm, str) or not pm or not isinstance(items, list) or not all(isinstance(p, str) and p for p in items):
+                return [f"{prefix}.install_packages must map package managers to lists of package names"]
+        return []
+    return [f"{prefix}.install_packages must be a list or mapping"]
+
+
+def _validate_scripts(prefix: str, scripts) -> list:
+    if not isinstance(scripts, dict) or any(not isinstance(k, str) or not k or not isinstance(v, str) or not v for k, v in scripts.items()):
+        return [f"{prefix}.scripts must map script names to command strings"]
+    return []
+
+
+def validate_tooling(name: str, tooling, folder: Path | None = None) -> list:
+    """Validate the optional 'tooling' section (conflict detection and preset metadata)."""
     if not isinstance(tooling, list):
         return [f"{name}: 'tooling' must be a list"]
     errors, seen = [], set()
@@ -327,6 +437,7 @@ def validate_tooling(name: str, tooling) -> list:
         else:
             seen.add(concern)
         kit = item.get("kit")
+        has_preset = False
         if not isinstance(kit, dict) or not isinstance(kit.get("name"), str) or not kit["name"]:
             errors.append(f"{pre}.kit must be an object with a 'name'")
         else:
@@ -336,12 +447,25 @@ def validate_tooling(name: str, tooling) -> list:
                 errors.append(f"{pre}.kit.commands must list keys among {', '.join(COMMAND_LABELS)}")
             if not isinstance(kit.get("format_rules", False), bool):
                 errors.append(f"{pre}.kit.format_rules must be a boolean")
+            if not isinstance(kit.get("only_when_installed", False), bool):
+                errors.append(f"{pre}.kit.only_when_installed must be a boolean")
             errors.extend(_perm_errors(f"{pre}.kit", kit.get("permissions", [])))
             terms = kit.get("practice_terms", [])
             if not isinstance(terms, list) or not all(isinstance(t, str) and t for t in terms):
                 errors.append(f"{pre}.kit.practice_terms must be a list of strings")
+            if "preset_files" in kit:
+                errors.extend(_validate_preset_files(f"{pre}.kit", folder, kit["preset_files"]))
+            if "install_packages" in kit:
+                errors.extend(_validate_install_packages(f"{pre}.kit", kit["install_packages"]))
+            if "scripts" in kit:
+                errors.extend(_validate_scripts(f"{pre}.kit", kit["scripts"]))
+            if "post_edit_check" in kit:
+                errors.extend(_validate_tool_rule(f"{pre}.kit.post_edit_check", kit["post_edit_check"], check_exec=True))
+            has_preset = bool(kit.get("preset_files") or kit.get("install_packages") or kit.get("scripts"))
         alts = item.get("alternatives")
-        if not isinstance(alts, list) or not alts:
+        if alts is None and has_preset:
+            alts = []
+        elif not isinstance(alts, list) or not alts:
             errors.append(f"{pre}.alternatives must be a non-empty list")
             continue
         for j, alt in enumerate(alts):
@@ -360,9 +484,10 @@ def validate_tooling(name: str, tooling) -> list:
                 errors.append(f"{apre}.commands must map command keys to strings")
             errors.extend(_perm_errors(apre, alt.get("permissions_allow", [])))
             rule = alt.get("format_rule")
-            if rule is not None and not (isinstance(rule, dict) and isinstance(rule.get("extensions"), list)
-                                         and isinstance(rule.get("command"), list) and "{file}" in rule["command"]):
-                errors.append(f"{apre}.format_rule needs 'extensions' and a 'command' containing '{{file}}'")
+            if rule is not None:
+                errors.extend(_validate_tool_rule(f"{apre}.format_rule", rule))
+            if "post_edit_check" in alt:
+                errors.extend(_validate_tool_rule(f"{apre}.post_edit_check", alt["post_edit_check"], check_exec=True))
     return errors
 
 
@@ -450,7 +575,7 @@ def cmd_detect(args) -> None:
 # A profile may declare "tooling" concerns (formatter, linter, package manager...): the tool the kit
 # prefers plus known alternatives with the files/hooks that reveal them. When a project already uses
 # an alternative, the kit must not silently impose its own tool: the user decides, per concern.
-DECISION_CHOICES = ("keep_existing", "adopt_kit", "keep_both")
+DECISION_CHOICES = ("keep_existing", "adopt_kit", "keep_both", "skip")
 MAX_MARKER_BYTES = 200_000
 COMMAND_KEYS_NEEDING_VERIFY = {"install", "dev", "test", "lint", "build"}
 
@@ -510,9 +635,10 @@ def normalize_decision(value) -> dict:
 def analyze_tooling(project: Path, profiles: list, decisions: dict) -> list:
     """One entry per tooling concern: what the kit prefers, what the project already uses, and the outcome.
 
-    status: none (no competing tool) | pending (competing tool, no decision yet: the kit holds back)
+    status: none (kit active/configured) | missing (no tool or config detected, preset available)
+            | pending (competing tool, no decision yet: the kit holds back)
             | resolved (user decided) | migration_pending (kit adopted but traces of the old tool remain)
-    effective: what the kit actually applies (adopt_kit | keep_existing | keep_both).
+    effective: what the kit actually applies (adopt_kit | keep_existing | keep_both | skip).
     """
     rel_files = collect_project_files(project)
     hooks = foreign_hooks(project)
@@ -521,6 +647,8 @@ def analyze_tooling(project: Path, profiles: list, decisions: dict) -> list:
         for item in p.get("tooling", []):
             concern, kit = item["concern"], item["kit"]
             kit_evidence = [e for m in kit.get("markers", []) for e in marker_evidence(project, rel_files, m)]
+            has_preset = bool(kit.get("preset_files") or kit.get("install_packages") or kit.get("scripts"))
+            only_installed = bool(kit.get("only_when_installed", False))
             existing = []
             for alt in item.get("alternatives", []):
                 evidence = [e for m in alt.get("markers", []) for e in marker_evidence(project, rel_files, m)]
@@ -530,7 +658,15 @@ def analyze_tooling(project: Path, profiles: list, decisions: dict) -> list:
                     existing.append({"name": alt["name"], "evidence": evidence[:4]})
             recorded = (decisions.get(p["stack"]) or {}).get(concern)
             if not existing:
-                status, effective = "none", "adopt_kit"
+                if recorded and recorded["choice"] == "skip":
+                    status, effective = "resolved", "skip"
+                elif not kit_evidence and has_preset:
+                    status = "missing"
+                    effective = "skip" if only_installed else "adopt_kit"
+                elif only_installed and not kit_evidence:
+                    status, effective = "none", "skip"
+                else:
+                    status, effective = "none", "adopt_kit"
             elif recorded:
                 effective = recorded["choice"]
                 status = "migration_pending" if effective == "adopt_kit" else "resolved"
@@ -547,27 +683,51 @@ def analyze_tooling(project: Path, profiles: list, decisions: dict) -> list:
 def effective_profile(profile: dict, analysis: list) -> dict:
     """Profile as it must be applied once tooling decisions are taken into account.
 
-    For every concern kept as-is: the kit's overlapping commands, formatting rule, permissions and
-    practice lines are withheld, and the existing tool's known equivalents (if any) take their place.
+    For every concern kept as-is or skipped: the kit's overlapping commands, formatting rule,
+    permissions and practice lines are withheld, and kept tools' known equivalents take their place.
     """
     mine = [a for a in analysis if a["stack"] == profile["stack"]]
     kept = [a for a in mine if a["effective"] == "keep_existing"]
-    if not kept:
+    skipped = [a for a in mine if a["effective"] == "skip"]
+    has_lint_checks = any(
+        i.get("kit", {}).get("post_edit_check") or any(alt.get("post_edit_check") for alt in i.get("alternatives", []))
+        for i in profile.get("tooling", [])
+    )
+    if not kept and not skipped and not has_lint_checks:
         return profile
     eff = json.loads(json.dumps(profile))
     items = {i["concern"]: i for i in profile.get("tooling", [])}
-    kept_concerns = {a["concern"] for a in kept}
+    eff_map = {a["concern"]: a for a in mine}
+    lint_rules = []
+    for item in profile.get("tooling", []):
+        a = eff_map.get(item["concern"])
+        choice = a["effective"] if a else "adopt_kit"
+        if choice == "skip":
+            continue
+        if choice == "keep_existing":
+            alt_name = a["existing"][0]["name"] if a and a.get("existing") else None
+            alt = next((x for x in item.get("alternatives", []) if x["name"] == alt_name), None)
+            if alt and alt.get("post_edit_check"):
+                lint_rules.append(alt["post_edit_check"])
+        else:
+            if item["kit"].get("post_edit_check"):
+                lint_rules.append(item["kit"]["post_edit_check"])
+    eff["lint_rules"] = lint_rules
+    if not kept and not skipped:
+        return eff
+    withheld_concerns = {a["concern"] for a in kept + skipped}
 
     owners = {}
     for a in mine:
         for rule in items[a["concern"]]["kit"].get("permissions", []):
             owners.setdefault(rule, set()).add(a["concern"])
-    withheld = {rule for rule, who in owners.items() if who <= kept_concerns}
+    withheld = {rule for rule, who in owners.items() if who <= withheld_concerns}
     eff["permissions_allow"] = [r for r in eff.get("permissions_allow", []) if r not in withheld]
 
     commands, practices = eff["commands"], eff.get("_practices", "")
     # Process package-manager first so kept formatter/linter rules take precedence over its defaults.
     ordered_kept = sorted(kept, key=lambda a: 0 if a["concern"] == "package-manager" else 1)
+    pm_verify_override = False
     for a in ordered_kept:
         item = items[a["concern"]]
         kit = item["kit"]
@@ -575,6 +735,8 @@ def effective_profile(profile: dict, analysis: list) -> dict:
         keys = kit.get("commands", [])
         for key in keys:
             commands[key] = alt.get("commands", {}).get(key)
+        if a["concern"] == "package-manager" and alt.get("commands", {}).get("verify"):
+            pm_verify_override = True
         if "verify" not in keys and COMMAND_KEYS_NEEDING_VERIFY & set(keys):
             commands["verify"] = None
         if kit.get("format_rules"):
@@ -587,6 +749,42 @@ def effective_profile(profile: dict, analysis: list) -> dict:
                               if not any(_word_in(line, t) for t in terms))
         names = ", ".join(e["name"] for e in a["existing"])
         practices += f"\n- Keep the project's own {a['concern']} ({names}); do not introduce {kit['name']}."
+
+    for a in skipped:
+        item = items[a["concern"]]
+        kit = item["kit"]
+        keys = kit.get("commands", [])
+        for key in keys:
+            commands[key] = None
+        if "verify" not in keys and COMMAND_KEYS_NEEDING_VERIFY & set(keys):
+            commands["verify"] = None
+        if kit.get("format_rules"):
+            eff["format_rules"] = []
+        terms = kit.get("practice_terms", [])
+        if terms:
+            practices = "\n".join(line for line in practices.splitlines()
+                                  if not any(_word_in(line, t) for t in terms))
+
+    if eff.get("verify_steps"):
+        kept_map = {a["concern"]: a for a in ordered_kept}
+        step_cmds = []
+        for step in eff["verify_steps"]:
+            c = step.get("concern")
+            cmd_key = step.get("command_key")
+            if c is None or c not in withheld_concerns:
+                val = commands.get(cmd_key) if cmd_key else step["cmd"]
+                if val:
+                    step_cmds.append(val)
+            elif c in kept_map:
+                if cmd_key:
+                    val = commands.get(cmd_key)
+                else:
+                    alt = next(x for x in items[c]["alternatives"] if x["name"] == kept_map[c]["existing"][0]["name"])
+                    val = alt.get("commands", {}).get("lint" if c == "linter" else c)
+                if val:
+                    step_cmds.append(val)
+        commands["verify"] = " && ".join(dict.fromkeys(step_cmds)) if step_cmds else None
+
     eff["_practices"] = practices.strip()
     return eff
 
@@ -618,7 +816,8 @@ def tooling_report(analysis: list) -> list:
             lines.append(f"! {label}: kit adopted but traces of {names} remain: "
                          + "; ".join(ev for e in a["existing"] for ev in e["evidence"]))
         elif a["status"] == "resolved":
-            lines.append(f"tooling   {label}: {a['effective']} ({names}), decided {a['decision'].get('date', '?')}")
+            detail = f" ({names})" if names else ""
+            lines.append(f"tooling   {label}: {a['effective']}{detail}, decided {a['decision'].get('date', '?')}")
     return lines
 
 
@@ -1041,7 +1240,7 @@ def resolve_verify_command(profiles: list, effective: dict, overrides: dict, pre
                            *, full: bool = True) -> str:
     if ctx.get("verify_command"):
         return str(ctx["verify_command"]).strip()
-    if not full and previous.get("verify_command") and not overrides:
+    if not full and previous.get("custom_verify") and previous.get("verify_command") and not overrides:
         return str(previous["verify_command"]).strip()
     cmds = []
     for name in list(dict.fromkeys([p["stack"] for p in profiles] + list(previous.get("profiles", {})))):
@@ -1051,7 +1250,7 @@ def resolve_verify_command(profiles: list, effective: dict, overrides: dict, pre
             cmds.append(cmd)
     if cmds:
         return " && ".join(dict.fromkeys(cmds))
-    return str(previous.get("verify_command") or "").strip()
+    return ""
 
 
 def write_kit_json(project: Path, profiles: list, previous: dict, managed: dict, rendered: dict,
@@ -1067,10 +1266,16 @@ def write_kit_json(project: Path, profiles: list, previous: dict, managed: dict,
             entry["version"] = str(ver).strip().lstrip("vV")
         known[p["stack"]] = entry
     format_rules = []
+    lint_rules = []
     for name in list(known):
         if name in effective:  # profiles deleted from the kit in the meantime are skipped
             format_rules.extend(effective[name].get("format_rules", []))
-    verify_cmd = resolve_verify_command(profiles, effective, ctx.get("commands_override", {}), previous, ctx, full=full)
+            lint_rules.extend(effective[name].get("lint_rules", []))
+    overrides = ctx.get("commands_override", {})
+    custom_verify = bool(ctx.get("verify_command") or any("verify" in ov for ov in overrides.values())) or (
+        not full and bool(previous.get("custom_verify"))
+    )
+    verify_cmd = resolve_verify_command(profiles, effective, overrides, previous, ctx, full=full)
     if "stop_verify" in ctx:
         stop_verify = bool(ctx["stop_verify"])
     elif "stop_verify" in previous:
@@ -1084,8 +1289,10 @@ def write_kit_json(project: Path, profiles: list, previous: dict, managed: dict,
         "local": local,
         "profiles": known,
         "stop_verify": stop_verify,
+        "custom_verify": custom_verify,
         "verify_command": verify_cmd,
         "format_rules": format_rules,
+        "lint_rules": lint_rules,
         "decisions": decisions,
         "managed": managed,
         "rendered": rendered,
@@ -1287,6 +1494,7 @@ def cmd_doctor(args) -> None:
         else:
             issues.append(f"{label} modified locally or predates hash tracking: run sync --force-hooks to reset")
 
+    warns = []
     profile_names = [n for n in kit_json.get("profiles", {}) if (PROFILES / n / "profile.json").is_file()]
     raw_profiles = [load_profile(n) for n in profile_names]
     analysis = analyze_tooling(project, raw_profiles, kit_json.get("decisions", {}))
@@ -1300,8 +1508,12 @@ def cmd_doctor(args) -> None:
         elif a["status"] == "migration_pending":
             issues.append(f"{label}: kit adopted but {names} is still configured ("
                           + "; ".join(ev for e in a["existing"] for ev in e["evidence"]) + "): finish the migration")
+        elif a["status"] == "missing":
+            warns.append(f"missing tooling {label}: no {a['kit']['name']} config detected "
+                         f"(install preset or `apply.py decide --profile {a['stack']} --concern {a['concern']} --choice skip`)")
         elif a["status"] == "resolved":
-            oks.append(f"tooling {label}: {a['effective']} ({names})")
+            detail = names or "preset"
+            oks.append(f"tooling {label}: {a['effective']} ({detail})")
 
     is_local = bool(kit_json.get("local", False))
     settings_rel = ".claude/settings.local.json" if is_local else ".claude/settings.json"
@@ -1412,7 +1624,7 @@ def cmd_doctor(args) -> None:
     for rel in leftovers:
         issues.append(f"{rel} is waiting to be merged or deleted")
 
-    print("\n".join([f"ok     {o}" for o in oks] + [f"ISSUE  {i}" for i in issues]))
+    print("\n".join([f"ok     {o}" for o in oks] + [f"WARN   {w}" for w in warns] + [f"ISSUE  {i}" for i in issues]))
     if issues:
         raise SystemExit(1)
 
@@ -1457,7 +1669,8 @@ def cmd_audit(args) -> None:
             "foreign_hooks": foreign_hooks(project),
             "foreign_permissions": extra_allow,
         },
-        "tooling": [a for a in analysis if a["status"] != "none"],
+        "tooling": [a for a in analysis if a["status"] not in ("none", "missing")],
+        "missing_tooling": [a for a in analysis if a["status"] == "missing"],
         "pending_conflicts": sum(1 for a in analysis if a["status"] == "pending"),
     }, ensure_ascii=False, indent=2))
 
@@ -1480,6 +1693,118 @@ def cmd_decide(args) -> None:
     write_text(project / ".claude" / "kit.json", json.dumps(kit_json, indent=2, ensure_ascii=False) + "\n", args.dry_run)
     print(("[DRY-RUN: nothing was written]\n" if args.dry_run else "")
           + f"recorded {args.profile}/{args.concern}: {args.choice}. Run `sync` to apply it to settings and kit.json.")
+
+
+def _copy_preset_non_destructive(src: Path, dest: Path, label: str, project: Path, dry: bool,
+                                 report: list, *, executable: bool = False) -> None:
+    proj_root = project.resolve()
+    dest_resolved = dest.resolve()
+    if (_is_unsafe_dest_path(label) or _is_unsafe_dest_path(dest_resolved.name)
+            or dest_resolved == proj_root or not dest_resolved.is_relative_to(proj_root)):
+        raise SystemExit(f"Unsafe preset destination: {label}")
+    if dest.exists():
+        report.append(f"skipped   {label} (already exists)")
+        return
+    write_text(dest, src.read_text(encoding="utf-8"), dry)
+    if executable and not dry:
+        dest.chmod(dest.stat().st_mode | 0o111)
+    report.append(f"created   {label}")
+
+
+def merge_package_json_scripts(pkg_path: Path, scripts: dict, dry: bool, report: list) -> None:
+    if not pkg_path.is_file() or not scripts:
+        return
+    try:
+        data = json.loads(pkg_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        raise SystemExit(f"{pkg_path} is not valid JSON: leaving it untouched.")
+    if not isinstance(data, dict):
+        raise SystemExit(f"{pkg_path} must contain a JSON object.")
+    pkg_scripts = data.setdefault("scripts", {})
+    if not isinstance(pkg_scripts, dict):
+        raise SystemExit(f"{pkg_path} 'scripts' must be a JSON object.")
+    added = [k for k in scripts if k not in pkg_scripts]
+    for k in added:
+        pkg_scripts[k] = scripts[k]
+    if added:
+        write_text(pkg_path, json.dumps(data, indent=2, ensure_ascii=False) + "\n", dry)
+        report.append(f"merged    package.json scripts (+{', '.join(added)})")
+
+
+def _resolve_install_packages(profile: dict, project: Path, pkgs) -> list:
+    if isinstance(pkgs, list):
+        return pkgs
+    if isinstance(pkgs, dict) and pkgs:
+        kit_json = load_kit_json(project)
+        analysis = analyze_tooling(project, [profile], kit_json.get("decisions", {}))
+        pm = next((a["existing"][0]["name"] for a in analysis
+                   if a["concern"] == "package-manager" and a["existing"] and a["effective"] == "keep_existing"), None)
+        if pm and pm in pkgs:
+            return pkgs[pm]
+        for item in profile.get("tooling", []):
+            if item.get("concern") == "package-manager" and item["kit"]["name"] in pkgs:
+                return pkgs[item["kit"]["name"]]
+        return next(iter(pkgs.values()))
+    return []
+
+
+def cmd_scaffold_tooling(args) -> None:
+    project = Path(args.project).resolve()
+    kit_json = load_kit_json(project)
+    if args.local or kit_json.get("local"):
+        raise SystemExit("scaffold-tooling is disabled in local mode (must not modify shared repo files).")
+    if not args.base_preset and not (args.profile and args.concern):
+        raise SystemExit("Specify --base-preset or both --profile and --concern.")
+
+    report = []
+    if args.base_preset:
+        if args.base_preset == "editorconfig":
+            _copy_preset_non_destructive(
+                BASE / "presets" / ".editorconfig", project / ".editorconfig",
+                ".editorconfig", project, args.dry_run, report,
+            )
+        elif args.base_preset == "pre-commit":
+            hook_markers = (".husky", ".pre-commit-config.yaml", "lefthook.yml", ".githooks")
+            if any((project / m).exists() for m in hook_markers):
+                report.append("skipped   .githooks/pre-commit (existing git hook framework detected)")
+            else:
+                _copy_preset_non_destructive(
+                    BASE / "presets" / "pre-commit", project / ".githooks" / "pre-commit",
+                    ".githooks/pre-commit", project, args.dry_run, report, executable=True,
+                )
+                report.append("hint      run `git config core.hooksPath .githooks` locally to activate")
+        emit(report, args.dry_run)
+        return
+
+    profile = load_profile(args.profile)
+    item = next((i for i in profile.get("tooling", []) if i.get("concern") == args.concern), None)
+    if item is None:
+        raise SystemExit(f"No tooling concern '{args.concern}' in profile '{args.profile}'.")
+
+    kit = item["kit"]
+    if kit.get("scripts"):
+        merge_package_json_scripts(project / "package.json", kit["scripts"], True, [])
+    prof_root = (PROFILES / profile["stack"]).resolve()
+    for pf in kit.get("preset_files", []):
+        src_path = (prof_root / pf["src"]).resolve()
+        if not src_path.is_relative_to(prof_root) or not src_path.is_file():
+            raise SystemExit(f"Invalid preset source '{pf['src']}' in profile '{profile['stack']}'.")
+        mode = pf.get("mode", "create")
+        if mode == "snippet":
+            report.append(f"SNIPPET {pf['dest']}:\n{src_path.read_text(encoding='utf-8').strip()}")
+        else:
+            _copy_preset_non_destructive(
+                src_path, project / pf["dest"], pf["dest"], project, args.dry_run, report,
+            )
+
+    if kit.get("scripts"):
+        merge_package_json_scripts(project / "package.json", kit["scripts"], args.dry_run, report)
+
+    pkgs = _resolve_install_packages(profile, project, kit.get("install_packages"))
+    if pkgs:
+        report.append(f"install_packages: {', '.join(pkgs)}")
+
+    emit(report, args.dry_run)
 
 
 # ------------------------------------------------------------------------ main
@@ -1528,6 +1853,15 @@ def main() -> None:
     p_decide.add_argument("--choice", required=True, choices=DECISION_CHOICES)
     p_decide.add_argument("--dry-run", action="store_true")
     p_decide.set_defaults(func=cmd_decide)
+
+    p_scaffold = sub.add_parser("scaffold-tooling", help="scaffold missing linter/formatter preset files non-destructively")
+    p_scaffold.add_argument("--project", default=".")
+    p_scaffold.add_argument("--profile")
+    p_scaffold.add_argument("--concern")
+    p_scaffold.add_argument("--base-preset", choices=["editorconfig", "pre-commit"])
+    p_scaffold.add_argument("--dry-run", action="store_true")
+    p_scaffold.add_argument("--local", action="store_true")
+    p_scaffold.set_defaults(func=cmd_scaffold_tooling)
 
     args = parser.parse_args()
     args.func(args)
