@@ -11,7 +11,9 @@ Supprime les fichiers dont tu n'as pas besoin ; un `org/` vide ne fait rien.
 | `mcp.json` | `{"mcpServers": {...}}`, fusionné dans le `.mcp.json` du projet. Les noms de serveurs existants ne sont jamais écrasés. N'y mets jamais de secrets : utilise des références `${ENV_VAR}`. |
 | `agents/*.md` | Copiés dans `.claude/agents/` (sous-agents), sans écraser. |
 | `commands/*.md` | Copiées dans `.claude/commands/` (commandes slash), sans écraser. |
+| `rules/*.md` | Copiées dans `.claude/rules/` (règles modulaires scopées par `paths`), sans écraser. |
+| `skills/<nom>/SKILL.md` | Copiés dans `.claude/skills/<nom>/` (workflows réutilisables à la demande), sans écraser. |
 
-`base/agents/` et `base/commands/` fonctionnent de la même façon pour ce qui appartient à tous les projets, quelle que soit l'entreprise.
+`base/agents/`, `base/commands/`, `base/rules/` et `base/skills/` fonctionnent de la même façon pour ce qui appartient à tous les projets, quelle que soit l'entreprise.
 
 Applique-les aux projets avec `/claude-kit` (première fois) ou `/claude-kit sync` (ensuite). Ignore la couche avec `--no-org`.

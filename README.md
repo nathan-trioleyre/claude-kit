@@ -34,10 +34,17 @@ Sur un projet qui a son propre `CLAUDE.md`, ses hooks, son formateur, son linter
 
 La détection des conflits vient de la section optionnelle `tooling` de chaque profil (voir [profiles/README.md](profiles/README.md)).
 
-## Les couches
+## Les couches (modèle en 5 layers)
 
 `base/` (tous les projets) → `org/` (optionnel, ton entreprise) → `profiles/<stack>/` (par stack) → le projet lui-même.
-Chaque couche ne fait qu'**ajouter** à la précédente. Voir [org/README.md](org/README.md) pour la couche entreprise (règles partagées, permissions, serveurs MCP, agents, commandes).
+Chaque couche ne fait qu'**ajouter** à la précédente. Voir [org/README.md](org/README.md) pour la couche entreprise (règles partagées, permissions, serveurs MCP, agents, commandes, règles modulaires, skills).
+
+Dans chaque projet configuré, le kit s'aligne sur les **5 couches Claude Code** :
+1. **`CLAUDE.md`** : identité, commandes, architecture et pièges (< 200 lignes, imports `@fichier` possibles).
+2. **`.claude/rules/*.md`** : règles modulaires scopées par `paths` (monorepos, `base/rules/`, `org/rules/`).
+3. **`.claude/skills/`** (et `commands/`) : workflows réutilisables à la demande (ex: `/verify` fourni dans `base/skills/verify/`).
+4. **`.claude/agents/`** : sous-agents isolés (ex: `code-reviewer` en lecture seule pour relire le diff sans biais).
+5. **Hooks (`.claude/settings.json`)** : garde-fous déterministes (`SessionStart` avec `session-check.py`, `PreToolUse` avec `guard.py`, `PostToolUse` avec `format.py`, et `Stop` opt-in avec `verify-stop.py` via `"stop_verify": true` dans `.claude/kit.json`).
 
 ## Qui fait quoi
 
@@ -71,11 +78,13 @@ claude-kit/
 ├── base/                       commun à TOUS les projets
 │   ├── CLAUDE.md.template      squelette du CLAUDE.md
 │   ├── settings.base.json      permissions renforcées + branchement des hooks
-│   ├── hooks/                  run-hook.sh (lanceur), guard.py (sécurité), format.py (formateurs)
-│   ├── agents/  commands/      optionnel : copiés dans chaque projet
-├── org/                        couche entreprise optionnelle (règles, permissions, MCP, agents, commandes)
+│   ├── hooks/                  run-hook.sh, guard.py, format.py, session-check.py, verify-stop.py
+│   ├── agents/                 code-reviewer.md (copié dans chaque projet)
+│   ├── skills/                 verify/SKILL.md (copié dans chaque projet)
+│   └── commands/  rules/       optionnel : copiés dans chaque projet
+├── org/                        couche entreprise optionnelle (règles, permissions, MCP, agents, commandes, skills)
 ├── profiles/                   un dossier par stack
-│   ├── python/ csharp-dotnet/ angular/   profils de départ
+│   ├── python/ csharp-dotnet/ angular/ typescript/   profils intégrés
 │   └── _TEMPLATE/              modèle pour écrire un profil à la main
 ├── skills/
 │   ├── claude-kit/             /claude-kit (+ scripts/apply.py)
@@ -84,10 +93,9 @@ claude-kit/
 └── tests/                      suite unittest sans dépendance
 ```
 
-### Les profils de départ ne sont volontairement pas vérifiés
+### Fraîcheur des profils
 
-`python`, `csharp-dotnet` et `angular` ont été écrits à partir de connaissances générales, sans vérification auprès de leurs sources.
-Leur `last_verified` est volontairement ancien, donc le kit les signale comme obsolètes. Lance `/claude-kit-refresh all` une fois : il relit les sources officielles, te montre les changements et inscrit la date de vérification après ton accord.
+Tout profil dont `last_verified` dépasse 90 jours est signalé comme obsolète (`stale`) par `doctor` et `apply`. Lance `/claude-kit-refresh [stack|all]` pour relire les sources officielles, vérifier les changements et mettre à jour la date de vérification après ton accord.
 
 ## Ce que le script ne fait jamais
 
