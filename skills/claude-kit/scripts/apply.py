@@ -257,6 +257,10 @@ def validate_profile_folder(folder: Path) -> list:
     if paths is not None and (not isinstance(paths, list) or not all(isinstance(x, str) and x for x in paths)):
         errors.append(f"{folder.name}: optional 'paths' must be a list of non-empty glob strings")
 
+    supersedes = data.get("supersedes")
+    if supersedes is not None and (not isinstance(supersedes, list) or not all(isinstance(x, str) and x for x in supersedes)):
+        errors.append(f"{folder.name}: optional 'supersedes' must be a list of non-empty stack names")
+
     if "tooling" in data:
         errors.extend(validate_tooling(folder.name, data["tooling"]))
 
@@ -401,16 +405,31 @@ def pattern_matches(rel_files: list, pattern: str) -> bool:
     return any(file_matches(rp, pattern) for rp in rel_files)
 
 
-def detect_matched(project: Path) -> list:
+def detect_details(project: Path) -> dict:
+    """Return {stack: {"dirs": [...], "rule_paths": [...]}} for matched profiles, honoring supersedes."""
     rel_files = collect_project_files(project)
-    return [p["stack"] for p in (load_profile(f.name) for f in profile_dirs())
-            if any(pattern_matches(rel_files, pat) for pat in p.get("detect", []))]
+    loaded = [load_profile(f.name) for f in profile_dirs()]
+    raw_matches = {}
+    superseded = set()
+    for p in loaded:
+        hits = [rp for rp in rel_files if any(file_matches(rp, pat) for pat in p.get("detect", []))]
+        if hits:
+            dirs = sorted({rp.rsplit("/", 1)[0] if "/" in rp else "." for rp in hits})
+            rule_paths = ["**/*" if d == "." else f"{d}/**" for d in dirs]
+            raw_matches[p["stack"]] = {"dirs": dirs, "rule_paths": rule_paths}
+            superseded.update(p.get("supersedes") or [])
+    return {s: info for s, info in raw_matches.items() if s not in superseded}
+
+
+def detect_matched(project: Path) -> list:
+    return list(detect_details(project).keys())
 
 
 def cmd_detect(args) -> None:
     project = Path(args.project).resolve()
     known = [load_profile(f.name)["stack"] for f in profile_dirs()]
-    print(json.dumps({"matched": detect_matched(project), "known_profiles": known}, ensure_ascii=False))
+    details = detect_details(project)
+    print(json.dumps({"matched": list(details.keys()), "known_profiles": known, "details": details}, ensure_ascii=False))
 
 
 # --------------------------------------------------------------------- tooling
@@ -615,7 +634,7 @@ def section_summary(existing: str, rendered: str, ignore_prefixes: tuple = ()) -
 def _kit_hook_tag(command: str) -> str | None:
     if ".claude/hooks/" not in command:
         return None
-    for script in ("guard.py", "format.py"):
+    for script in ("guard.py", "format.py", "session-check.py", "verify-stop.py"):
         if script in command:
             return script
     return None
@@ -867,7 +886,7 @@ def sync_file(src: Path, dest: Path, label: str, managed: dict, dry: bool, repor
 
 
 def sync_extras(project: Path, managed: dict, dry: bool, report: list, force: bool, use_org: bool) -> None:
-    """Hooks, then optional agents/commands from base/ and org/ (non-destructive)."""
+    """Hooks, then optional agents/commands/rules/skills from base/ and org/ (non-destructive)."""
     for src in sorted((BASE / "hooks").iterdir()):
         if src.is_file() and not src.name.startswith("."):
             sync_file(src, project / ".claude" / "hooks" / src.name, f".claude/hooks/{src.name}",
@@ -875,13 +894,21 @@ def sync_extras(project: Path, managed: dict, dry: bool, report: list, force: bo
 
     roots = [BASE] + ([ORG] if use_org else [])
     for root in roots:
-        for sub in ("agents", "commands"):
+        for sub in ("agents", "commands", "rules"):
             folder = root / sub
             if not folder.is_dir():
                 continue
             for src in sorted(folder.glob("*.md")):
                 sync_file(src, project / ".claude" / sub / src.name, f".claude/{sub}/{src.name}",
                           managed, dry, report, False)
+
+        skills_dir = root / "skills"
+        if skills_dir.is_dir():
+            for skill_folder in sorted(p for p in skills_dir.iterdir() if p.is_dir() and (p / "SKILL.md").is_file()):
+                for src in sorted(p for p in skill_folder.rglob("*") if p.is_file() and "__pycache__" not in p.parts):
+                    rel = src.relative_to(skill_folder).as_posix()
+                    label = f".claude/skills/{skill_folder.name}/{rel}"
+                    sync_file(src, project / label, label, managed, dry, report, False)
 
     mcp_src = ORG / "mcp.json" if use_org else None
     if mcp_src and mcp_src.is_file():
@@ -938,8 +965,23 @@ def update_gitignore(project: Path, dry: bool, report: list) -> None:
         report.append(f"updated   .gitignore (+{len(missing)} lines)")
 
 
+def resolve_verify_command(profiles: list, effective: dict, overrides: dict, previous: dict, ctx: dict) -> str:
+    if ctx.get("verify_command"):
+        return str(ctx["verify_command"]).strip()
+    cmds = []
+    for name in list(dict.fromkeys([p["stack"] for p in profiles] + list(previous.get("profiles", {})))):
+        ov = overrides.get(name, {})
+        cmd = ov.get("verify") if "verify" in ov else (effective.get(name, {}).get("commands", {}).get("verify"))
+        if cmd:
+            cmds.append(cmd)
+    if cmds:
+        return " && ".join(dict.fromkeys(cmds))
+    return str(previous.get("verify_command") or "").strip()
+
+
 def write_kit_json(project: Path, profiles: list, previous: dict, managed: dict, rendered: dict,
-                   decisions: dict, effective: dict, dry: bool, report: list) -> None:
+                   decisions: dict, effective: dict, dry: bool, report: list, ctx: dict | None = None) -> None:
+    ctx = ctx or {}
     known = dict(previous.get("profiles", {}))
     for p in profiles:
         known[p["stack"]] = {"last_verified": p["last_verified"]}
@@ -947,11 +989,15 @@ def write_kit_json(project: Path, profiles: list, previous: dict, managed: dict,
     for name in list(known):
         if name in effective:  # profiles deleted from the kit in the meantime are skipped
             format_rules.extend(effective[name].get("format_rules", []))
+    stop_verify = bool(ctx["stop_verify"]) if "stop_verify" in ctx else bool(previous.get("stop_verify", False))
+    verify_cmd = resolve_verify_command(profiles, effective, ctx.get("commands_override", {}), previous, ctx)
     kit_json = {
         "generated_by": "claude-kit",
         "kit_version": KIT_VERSION,
         "date": date.today().isoformat(),
         "profiles": known,
+        "stop_verify": stop_verify,
+        "verify_command": verify_cmd,
         "format_rules": format_rules,
         "decisions": decisions,
         "managed": managed,
@@ -1025,7 +1071,7 @@ def run(project: Path, profile_names: list, ctx: dict, dry: bool, *, full: bool,
     sync_extras(project, managed, dry, report, force_hooks, use_org)
 
     # 5. kit.json (metadata, formatting rules, hashes)
-    write_kit_json(project, profiles, previous, managed, rendered_state, decisions, effective, dry, report)
+    write_kit_json(project, profiles, previous, managed, rendered_state, decisions, effective, dry, report, ctx)
 
     # 6. .gitignore (local Claude files)
     update_gitignore(project, dry, report)

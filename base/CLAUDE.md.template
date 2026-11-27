@@ -2,6 +2,8 @@
 
 {{DESCRIPTION}}
 
+<!-- Keep this file under ~200 lines. Use @path/to/doc.md imports for detailed specs if needed. -->
+
 ## Stack
 {{STACK}}
 

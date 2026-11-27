@@ -302,7 +302,48 @@ class TestApply(unittest.TestCase):
         res = subprocess.run([sys.executable, str(APPLY), "validate"], capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
         names = {p["stack"] for p in json.loads(subprocess.check_output([sys.executable, str(APPLY), "list"], text=True))}
-        self.assertTrue({"python", "csharp-dotnet", "angular"} <= names)
+        self.assertTrue({"python", "csharp-dotnet", "angular", "typescript"} <= names)
+
+    def test_detect_returns_details_and_honors_supersedes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            kit_copy = t / "kit"
+            copy_kit(kit_copy)
+            for stack in ("angular", "typescript", "python"):
+                shutil.copytree(KIT / "profiles" / stack, kit_copy / "profiles" / stack)
+
+            proj = t / "mono"
+            (proj / "apps" / "web").mkdir(parents=True)
+            (proj / "apps" / "web" / "angular.json").write_text("{}", encoding="utf-8")
+            (proj / "apps" / "web" / "tsconfig.json").write_text("{}", encoding="utf-8")
+            (proj / "apps" / "api").mkdir(parents=True)
+            (proj / "apps" / "api" / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+
+            out = subprocess.check_output(
+                [sys.executable, str(kit_copy / "skills" / "claude-kit" / "scripts" / "apply.py"), "detect", "--project", str(proj)],
+                text=True,
+            )
+            data = json.loads(out)
+            self.assertEqual(sorted(data["matched"]), ["angular", "python"])
+            self.assertEqual(data["details"]["angular"]["dirs"], ["apps/web"])
+            self.assertEqual(data["details"]["angular"]["rule_paths"], ["apps/web/**"])
+            self.assertEqual(data["details"]["python"]["rule_paths"], ["apps/api/**"])
+
+    def test_base_agents_skills_and_org_rules_synced(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            kit, apply_bin, proj = self._kit_and_project(tmp)
+            org = kit / "org"
+            (org / "rules").mkdir(parents=True)
+            (org / "rules" / "security.md").write_text("---\npaths:\n  - \"src/**\"\n---\nNo eval.\n", encoding="utf-8")
+
+            ctx = json.dumps({"stop_verify": True})
+            run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python", "--context", "-", input=ctx)
+            self.assertTrue((proj / ".claude" / "agents" / "code-reviewer.md").is_file())
+            self.assertTrue((proj / ".claude" / "skills" / "verify" / "SKILL.md").is_file())
+            self.assertTrue((proj / ".claude" / "rules" / "security.md").is_file())
+            kj = json.loads((proj / ".claude" / "kit.json").read_text(encoding="utf-8"))
+            self.assertTrue(kj["stop_verify"])
+            self.assertEqual(kj["verify_command"], "pytest && ruff check .")
 
 
 if __name__ == "__main__":

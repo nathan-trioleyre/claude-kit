@@ -37,7 +37,7 @@ Hereafter:
 
 1. List the root directory and read files that reveal the stack and real commands: `pyproject.toml`, `requirements*.txt`, `*.sln`, `*.csproj`, `package.json`, `angular.json`, `tsconfig.json`, `Makefile`, CI workflows (`.github/workflows`, `azure-pipelines.yml`...), `README`.
 2. Check if a `CLAUDE.md` or `.claude/` directory already exists: they must be respected, never overwritten.
-3. Run `APPLY detect --project .` to see which known profiles match (scans up to depth 5 while pruning `node_modules`/`.venv`/etc.).
+3. Run `APPLY detect --project .` to see which known profiles match (scans up to depth 5 while pruning `node_modules`/`.venv`/etc.). It also returns `details` with the directories and suggested `rule_paths` globs for each matched stack.
 4. List **all** stacks in the project (an Angular + C# monorepo has two), including those without a profile yet.
 5. Note the project's **actual commands** (`package.json` scripts, `Makefile`, CI) and subproject directories for monorepos. Project commands take precedence over profile defaults.
 
@@ -84,7 +84,8 @@ Build the context JSON object:
 
 - `decisions`: the answers from Step 3b, only for concerns the audit listed.
 - Only fill in what you actually read in the code. If you don't know, omit the key: the script inserts `_To be completed._`. Never guess or invent.
-- Include `"rule_paths"` only for multi-stack monorepos when you want stack practices written into path-scoped `.claude/rules/<stack>.md` files instead of inline in `CLAUDE.md`.
+- Include `"rule_paths"` only for multi-stack monorepos when you want stack practices written into path-scoped `.claude/rules/<stack>.md` files instead of inline in `CLAUDE.md` (you can use the globs suggested by `APPLY detect` in `details`).
+- Optional `"stop_verify": true` enables the deterministic `Stop` hook (`verify-stop.py`) for the project so Claude cannot finish a turn while the project's `verify_command` fails.
 - The kit may also contain an optional `org/` layer (company-wide rules, permissions, MCP servers, agents, commands, see `org/README.md`). `apply.py` applies it automatically; do not duplicate its content in the context JSON.
 - Pass the JSON via stdin using `--context -` (preferred, leaves no temp file) or a temp file outside the project.
 
