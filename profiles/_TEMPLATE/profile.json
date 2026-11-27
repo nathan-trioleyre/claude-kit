@@ -7,8 +7,11 @@
     "install": "command or null",
     "dev": "command or null",
     "test": "command or null",
+    "test_related": "targeted single-file test command or null",
     "lint": "command or null",
     "format": "command or null",
+    "hygiene": "dead code / unused deps check or null",
+    "audit": "security / vulnerability audit or null",
     "build": "command or null",
     "verify": "the single command to run before saying 'done'"
   },

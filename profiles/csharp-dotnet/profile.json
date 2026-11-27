@@ -11,8 +11,10 @@
     "install": "dotnet restore",
     "dev": null,
     "test": "dotnet test",
+    "test_related": "dotnet test --filter <TestName>",
     "lint": "dotnet format --verify-no-changes",
     "format": "dotnet format",
+    "audit": "dotnet list package --vulnerable --include-transitive",
     "build": "dotnet build --no-restore",
     "verify": "dotnet build && dotnet test"
   },
@@ -20,7 +22,8 @@
     "Bash(dotnet restore*)",
     "Bash(dotnet build*)",
     "Bash(dotnet test*)",
-    "Bash(dotnet format*)"
+    "Bash(dotnet format*)",
+    "Bash(dotnet list package*)"
   ],
   "format_rules": [],
   "tooling": [

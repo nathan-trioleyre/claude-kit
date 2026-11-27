@@ -9,8 +9,11 @@
     "install": "npm ci",
     "dev": "npm run dev",
     "test": "npm test",
+    "test_related": "npm test -- <file>",
     "lint": "npm run lint",
     "format": "npm run format",
+    "hygiene": "npx knip",
+    "audit": "npm audit --audit-level=high",
     "build": "npm run build",
     "verify": "npm run lint && tsc --noEmit && npm test && npm run build"
   },
@@ -40,6 +43,7 @@
     "Bash(npm test*)",
     "Bash(npm run build*)",
     "Bash(npm run lint*)",
+    "Bash(npm audit*)",
     "Bash(tsc --noEmit*)"
   ],
   "format_rules": [
@@ -268,7 +272,9 @@
           "install",
           "dev",
           "test",
+          "test_related",
           "lint",
+          "audit",
           "build",
           "verify"
         ],
@@ -276,7 +282,8 @@
           "Bash(npm ci)",
           "Bash(npm test*)",
           "Bash(npm run build*)",
-          "Bash(npm run lint*)"
+          "Bash(npm run lint*)",
+          "Bash(npm audit*)"
         ],
         "practice_terms": [
           "npm ci",
@@ -298,7 +305,9 @@
             "install": "pnpm install --frozen-lockfile",
             "dev": "pnpm run dev",
             "test": "pnpm test",
+            "test_related": "pnpm test <file>",
             "lint": "pnpm run lint",
+            "audit": "pnpm audit --audit-level=high",
             "build": "pnpm run build",
             "verify": "pnpm run lint && tsc --noEmit && pnpm test && pnpm run build"
           },
@@ -306,7 +315,8 @@
             "Bash(pnpm install*)",
             "Bash(pnpm test*)",
             "Bash(pnpm run build*)",
-            "Bash(pnpm run lint*)"
+            "Bash(pnpm run lint*)",
+            "Bash(pnpm audit*)"
           ]
         },
         {

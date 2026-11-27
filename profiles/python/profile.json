@@ -11,8 +11,11 @@
     "install": "uv sync",
     "dev": null,
     "test": "uv run pytest",
+    "test_related": "uv run pytest <file>",
     "lint": "uv run ruff check .",
     "format": "uv run ruff format .",
+    "hygiene": "uvx deptry . && uvx vulture . --min-confidence 80",
+    "audit": "uvx pip-audit",
     "build": "uv build",
     "verify": "uv run ruff check . && uv run pytest"
   },
@@ -249,6 +252,7 @@
           "install",
           "dev",
           "test",
+          "test_related",
           "lint",
           "format",
           "build",
@@ -282,6 +286,7 @@
           "commands": {
             "install": "poetry install",
             "test": "poetry run pytest",
+            "test_related": "poetry run pytest <file>",
             "lint": "poetry run ruff check .",
             "format": "poetry run ruff format .",
             "build": "poetry build",

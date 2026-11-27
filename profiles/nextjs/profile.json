@@ -12,8 +12,11 @@
     "install": "npm ci",
     "dev": "npm run dev",
     "test": "npm test",
+    "test_related": "npm test -- <file>",
     "lint": "npm run lint",
     "format": "npm run format",
+    "hygiene": "npx knip",
+    "audit": "npm audit --audit-level=high",
     "build": "npm run build",
     "verify": "npm run lint && tsc --noEmit && npm run build"
   },

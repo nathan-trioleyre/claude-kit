@@ -9,8 +9,11 @@
     "install": "cargo fetch",
     "dev": "cargo run",
     "test": "cargo test",
+    "test_related": "cargo test <test_name>",
     "lint": "cargo clippy --all-targets -- -D warnings",
     "format": "cargo fmt",
+    "hygiene": "cargo machete",
+    "audit": "cargo audit",
     "build": "cargo build",
     "verify": "cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test"
   },
@@ -19,7 +22,9 @@
     "Bash(cargo test*)",
     "Bash(cargo clippy*)",
     "Bash(cargo fmt*)",
-    "Bash(cargo build*)"
+    "Bash(cargo build*)",
+    "Bash(cargo audit*)",
+    "Bash(cargo machete*)"
   ],
   "format_rules": [
     {
