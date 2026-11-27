@@ -1,0 +1,16 @@
+is_global = true
+
+# Unused code & dead members
+dotnet_diagnostic.IDE0005.severity = warning
+dotnet_diagnostic.IDE0051.severity = warning
+dotnet_diagnostic.IDE0052.severity = warning
+
+# Nullability & argument validation
+dotnet_diagnostic.CA1062.severity = warning
+dotnet_diagnostic.CS8600.severity = warning
+dotnet_diagnostic.CS8602.severity = warning
+dotnet_diagnostic.CS8604.severity = warning
+
+# Performance & design
+dotnet_diagnostic.CA1822.severity = warning
+dotnet_diagnostic.CA1848.severity = suggestion

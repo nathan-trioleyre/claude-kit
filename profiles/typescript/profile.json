@@ -10,10 +10,31 @@
     "dev": "npm run dev",
     "test": "npm test",
     "lint": "npm run lint",
-    "format": null,
+    "format": "npm run format",
     "build": "npm run build",
-    "verify": "npm run lint && npm test && npm run build"
+    "verify": "npm run lint && tsc --noEmit && npm test && npm run build"
   },
+  "verify_steps": [
+    {
+      "cmd": "npm run lint",
+      "concern": "linter",
+      "command_key": "lint"
+    },
+    {
+      "cmd": "tsc --noEmit",
+      "concern": "typechecker"
+    },
+    {
+      "cmd": "npm test",
+      "concern": "package-manager",
+      "command_key": "test"
+    },
+    {
+      "cmd": "npm run build",
+      "concern": "package-manager",
+      "command_key": "build"
+    }
+  ],
   "permissions_allow": [
     "Bash(npm ci)",
     "Bash(npm test*)",
@@ -57,7 +78,20 @@
         "commands": [
           "format"
         ],
-        "format_rules": true
+        "format_rules": true,
+        "preset_files": [
+          {
+            "src": "presets/.prettierrc",
+            "dest": ".prettierrc",
+            "mode": "create"
+          }
+        ],
+        "install_packages": [
+          "prettier"
+        ],
+        "scripts": {
+          "format": "prettier --write ."
+        }
       },
       "alternatives": [
         {
@@ -81,16 +115,146 @@
               ".jsx",
               ".json"
             ],
+              "command": [
+                "biome",
+                "format",
+                "--write",
+                "{file}"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "concern": "linter",
+        "kit": {
+          "name": "eslint",
+          "markers": [
+            {
+              "file": "eslint.config.*"
+            },
+            {
+              "file": ".eslintrc*"
+            },
+            {
+              "file": "package.json",
+              "contains": "\"eslint\""
+            }
+          ],
+          "commands": [
+            "lint"
+          ],
+          "permissions": [
+            "Bash(npm run lint*)"
+          ],
+          "preset_files": [
+            {
+              "src": "presets/eslint.config.mjs",
+              "dest": "eslint.config.mjs",
+              "mode": "create"
+            }
+          ],
+          "install_packages": [
+            "eslint",
+            "@eslint/js",
+            "typescript-eslint"
+          ],
+          "scripts": {
+            "lint": "eslint ."
+          },
+          "post_edit_check": {
+            "extensions": [
+              ".ts",
+              ".tsx",
+              ".js",
+              ".jsx"
+            ],
             "command": [
-              "biome",
-              "format",
-              "--write",
+              "eslint",
+              "--fix",
               "{file}"
             ]
           }
+        },
+        "alternatives": [
+          {
+            "name": "biome",
+            "markers": [
+              {
+                "file": "biome.json"
+              },
+              {
+                "file": "biome.jsonc"
+              }
+            ],
+            "hooks": [
+              "biome"
+            ],
+            "post_edit_check": {
+              "extensions": [
+                ".ts",
+                ".tsx",
+                ".js",
+                ".jsx"
+              ],
+              "command": [
+                "biome",
+                "check",
+                "--write",
+                "{file}"
+              ]
+            }
+          },
+          {
+            "name": "oxlint",
+            "markers": [
+              {
+                "file": ".oxlintrc.json"
+              },
+              {
+                "file": "oxlintrc.json"
+              }
+            ],
+            "hooks": [
+              "oxlint"
+            ],
+            "post_edit_check": {
+              "extensions": [
+                ".ts",
+                ".tsx",
+                ".js",
+                ".jsx"
+              ],
+              "command": [
+                "oxlint",
+                "{file}"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "concern": "typechecker",
+        "kit": {
+          "name": "tsc",
+          "markers": [
+            {
+              "file": "tsconfig.json"
+            }
+          ],
+          "commands": [],
+          "permissions": [
+            "Bash(tsc --noEmit*)"
+          ],
+          "preset_files": [
+            {
+              "src": "presets/tsconfig.json",
+              "dest": "tsconfig.json",
+              "mode": "create"
+            }
+          ]
         }
-      ]
-    },
+      },
     {
       "concern": "package-manager",
       "kit": {
@@ -136,7 +300,7 @@
             "test": "pnpm test",
             "lint": "pnpm run lint",
             "build": "pnpm run build",
-            "verify": "pnpm run lint && pnpm test && pnpm run build"
+            "verify": "pnpm run lint && tsc --noEmit && pnpm test && pnpm run build"
           },
           "permissions_allow": [
             "Bash(pnpm install*)",
@@ -161,7 +325,7 @@
             "test": "yarn test",
             "lint": "yarn lint",
             "build": "yarn build",
-            "verify": "yarn lint && yarn test && yarn build"
+            "verify": "yarn lint && tsc --noEmit && yarn test && yarn build"
           },
           "permissions_allow": [
             "Bash(yarn install*)",
@@ -189,7 +353,7 @@
             "test": "bun test",
             "lint": "bun run lint",
             "build": "bun run build",
-            "verify": "bun run lint && bun test && bun run build"
+            "verify": "bun run lint && tsc --noEmit && bun test && bun run build"
           }
         }
       ]
@@ -197,7 +361,9 @@
   ],
   "sources": [
     "https://www.typescriptlang.org/tsconfig/",
-    "https://nodejs.org/en/learn/getting-started/introduction-to-nodejs"
+    "https://nodejs.org/en/learn/getting-started/introduction-to-nodejs",
+    "https://typescript-eslint.io/getting-started/",
+    "https://eslint.org/docs/latest/use/configure/configuration-files"
   ],
   "last_verified": "2026-11-27"
 }

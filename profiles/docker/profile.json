@@ -19,11 +19,55 @@
     "build": "docker build .",
     "verify": null
   },
-  "permissions_allow": [],
+  "permissions_allow": [
+    "Bash(hadolint *)"
+  ],
   "format_rules": [],
+  "tooling": [
+    {
+      "concern": "linter",
+      "kit": {
+        "name": "hadolint",
+        "markers": [
+          {
+            "file": ".hadolint.yaml"
+          },
+          {
+            "file": ".hadolint.yml"
+          }
+        ],
+        "commands": [],
+        "permissions": [
+          "Bash(hadolint *)"
+        ],
+        "only_when_installed": true,
+        "preset_files": [
+          {
+            "src": "presets/.hadolint.yaml",
+            "dest": ".hadolint.yaml",
+            "mode": "create"
+          }
+        ],
+        "post_edit_check": {
+          "extensions": [
+            ".dockerfile"
+          ],
+          "filenames": [
+            "Dockerfile",
+            "Dockerfile.*"
+          ],
+          "command": [
+            "hadolint",
+            "{file}"
+          ]
+        }
+      }
+    }
+  ],
   "sources": [
     "https://docs.docker.com/build/building/best-practices/",
-    "https://docs.docker.com/compose/compose-file/"
+    "https://docs.docker.com/compose/compose-file/",
+    "https://github.com/hadolint/hadolint"
   ],
   "last_verified": "2026-11-27"
 }

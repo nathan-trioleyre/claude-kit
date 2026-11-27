@@ -1,0 +1,22 @@
+line-length = 100
+
+[lint]
+select = [
+  "E",    # pycodestyle errors
+  "F",    # pyflakes (unused imports/vars, undefined names)
+  "I",    # isort import sorting
+  "B",    # flake8-bugbear (likely bugs and design problems)
+  "UP",   # pyupgrade (modern Python syntax)
+  "SIM",  # flake8-simplify (redundant/nested logic)
+  "C90",  # mccabe complexity guardrail
+  "S",    # flake8-bandit basic security checks
+  "RUF",  # Ruff-specific rules
+]
+ignore = ["E501"]
+
+[lint.mccabe]
+max-complexity = 12
+
+[lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]
+"test_*.py" = ["S101"]

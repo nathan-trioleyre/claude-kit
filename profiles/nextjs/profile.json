@@ -13,10 +13,26 @@
     "dev": "npm run dev",
     "test": "npm test",
     "lint": "npm run lint",
-    "format": null,
+    "format": "npm run format",
     "build": "npm run build",
     "verify": "npm run lint && tsc --noEmit && npm run build"
   },
+  "verify_steps": [
+    {
+      "cmd": "npm run lint",
+      "concern": "linter",
+      "command_key": "lint"
+    },
+    {
+      "cmd": "tsc --noEmit",
+      "concern": "typechecker"
+    },
+    {
+      "cmd": "npm run build",
+      "concern": "package-manager",
+      "command_key": "build"
+    }
+  ],
   "permissions_allow": [
     "Bash(npm ci)",
     "Bash(npm test*)",
@@ -61,7 +77,20 @@
         "commands": [
           "format"
         ],
-        "format_rules": true
+        "format_rules": true,
+        "preset_files": [
+          {
+            "src": "presets/.prettierrc",
+            "dest": ".prettierrc",
+            "mode": "create"
+          }
+        ],
+        "install_packages": [
+          "prettier"
+        ],
+        "scripts": {
+          "format": "prettier --write ."
+        }
       },
       "alternatives": [
         {
@@ -95,6 +124,109 @@
           }
         }
       ]
+    },
+    {
+      "concern": "linter",
+      "kit": {
+        "name": "eslint",
+        "markers": [
+          {
+            "file": "eslint.config.*"
+          },
+          {
+            "file": ".eslintrc*"
+          },
+          {
+            "file": "package.json",
+            "contains": "\"eslint\""
+          }
+        ],
+        "commands": [
+          "lint"
+        ],
+        "permissions": [
+          "Bash(npm run lint*)"
+        ],
+        "preset_files": [
+          {
+            "src": "presets/eslint.config.mjs",
+            "dest": "eslint.config.mjs",
+            "mode": "create"
+          }
+        ],
+        "install_packages": [
+          "eslint",
+          "eslint-config-next"
+        ],
+        "scripts": {
+          "lint": "eslint ."
+        },
+        "post_edit_check": {
+          "extensions": [
+            ".ts",
+            ".tsx",
+            ".js",
+            ".jsx"
+          ],
+          "command": [
+            "eslint",
+            "--fix",
+            "{file}"
+          ]
+        }
+      },
+      "alternatives": [
+        {
+          "name": "biome",
+          "markers": [
+            {
+              "file": "biome.json"
+            },
+            {
+              "file": "biome.jsonc"
+            }
+          ],
+          "hooks": [
+            "biome"
+          ],
+          "post_edit_check": {
+            "extensions": [
+              ".ts",
+              ".tsx",
+              ".js",
+              ".jsx"
+            ],
+            "command": [
+              "biome",
+              "check",
+              "--write",
+              "{file}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "concern": "typechecker",
+      "kit": {
+        "name": "tsc",
+        "markers": [
+          {
+            "file": "tsconfig.json"
+          }
+        ],
+        "commands": [],
+        "permissions": [
+          "Bash(tsc --noEmit*)"
+        ],
+        "preset_files": [
+          {
+            "src": "presets/tsconfig.json",
+            "dest": "tsconfig.json",
+            "mode": "create"
+          }
+        ]
+      }
     },
     {
       "concern": "package-manager",
@@ -202,7 +334,8 @@
   ],
   "sources": [
     "https://nextjs.org/docs/app/getting-started",
-    "https://nextjs.org/docs/app/building-your-application/rendering/composition-patterns"
+    "https://nextjs.org/docs/app/building-your-application/rendering/composition-patterns",
+    "https://nextjs.org/docs/app/api-reference/config/eslint"
   ],
   "last_verified": "2026-11-27"
 }

@@ -16,6 +16,22 @@
     "build": "uv build",
     "verify": "uv run ruff check . && uv run pytest"
   },
+  "verify_steps": [
+    {
+      "cmd": "uv run ruff check .",
+      "concern": "linter",
+      "command_key": "lint"
+    },
+    {
+      "cmd": "uv run mypy .",
+      "concern": "typechecker"
+    },
+    {
+      "cmd": "uv run pytest",
+      "concern": "package-manager",
+      "command_key": "test"
+    }
+  ],
   "permissions_allow": [
     "Bash(uv sync*)",
     "Bash(uv run pytest*)",
@@ -60,7 +76,18 @@
         "format_rules": true,
         "practice_terms": [
           "ruff"
-        ]
+        ],
+        "preset_files": [
+          {
+            "src": "presets/ruff.toml",
+            "dest": "ruff.toml",
+            "mode": "create"
+          }
+        ],
+        "install_packages": {
+          "uv": ["ruff"],
+          "poetry": ["ruff"]
+        }
       },
       "alternatives": [
         {
@@ -132,7 +159,29 @@
         ],
         "practice_terms": [
           "ruff"
-        ]
+        ],
+        "preset_files": [
+          {
+            "src": "presets/ruff.toml",
+            "dest": "ruff.toml",
+            "mode": "create"
+          }
+        ],
+        "install_packages": {
+          "uv": ["ruff"],
+          "poetry": ["ruff"]
+        },
+        "post_edit_check": {
+          "extensions": [
+            ".py"
+          ],
+          "command": [
+            "ruff",
+            "check",
+            "--fix",
+            "{file}"
+          ]
+        }
       },
       "alternatives": [
         {
@@ -276,11 +325,68 @@
           ]
         }
       ]
+    },
+    {
+      "concern": "typechecker",
+      "kit": {
+        "name": "mypy",
+        "markers": [
+          {
+            "file": "mypy.ini"
+          },
+          {
+            "file": ".mypy.ini"
+          },
+          {
+            "file": "pyproject.toml",
+            "contains": "[tool.mypy"
+          }
+        ],
+        "commands": [],
+        "permissions": [
+          "Bash(uv run mypy*)",
+          "Bash(mypy*)"
+        ],
+        "only_when_installed": true,
+        "preset_files": [
+          {
+            "src": "presets/mypy.ini",
+            "dest": "mypy.ini",
+            "mode": "create"
+          }
+        ],
+        "install_packages": {
+          "uv": ["mypy"],
+          "poetry": ["mypy"]
+        }
+      },
+      "alternatives": [
+        {
+          "name": "pyright",
+          "markers": [
+            {
+              "file": "pyrightconfig.json"
+            },
+            {
+              "file": "pyproject.toml",
+              "contains": "[tool.pyright"
+            }
+          ],
+          "hooks": [
+            "pyright"
+          ],
+          "permissions_allow": [
+            "Bash(uv run pyright*)",
+            "Bash(pyright*)"
+          ]
+        }
+      ]
     }
   ],
   "sources": [
     "https://docs.astral.sh/uv/",
     "https://docs.astral.sh/ruff/",
+    "https://mypy.readthedocs.io/en/stable/config_file.html",
     "https://docs.pytest.org/",
     "https://peps.python.org/pep-0008/"
   ],

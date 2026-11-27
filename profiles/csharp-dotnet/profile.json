@@ -54,11 +54,41 @@
           ]
         }
       ]
+    },
+    {
+      "concern": "analyzers",
+      "kit": {
+        "name": "roslyn-analyzers",
+        "markers": [
+          {
+            "file": "Directory.Build.props",
+            "contains": "AnalysisLevel"
+          },
+          {
+            "file": ".globalconfig"
+          }
+        ],
+        "commands": [],
+        "only_when_installed": true,
+        "preset_files": [
+          {
+            "src": "presets/Directory.Build.props",
+            "dest": "Directory.Build.props",
+            "mode": "create"
+          },
+          {
+            "src": "presets/.globalconfig",
+            "dest": ".globalconfig",
+            "mode": "create"
+          }
+        ]
+      }
     }
   ],
   "sources": [
     "https://learn.microsoft.com/en-us/dotnet/core/tools/",
     "https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/coding-style/coding-conventions",
+    "https://learn.microsoft.com/en-us/dotnet/fundamentals/code-analysis/configuration-files",
     "https://learn.microsoft.com/en-us/aspnet/core/",
     "https://learn.microsoft.com/en-us/aspnet/core/security/app-secrets",
     "https://learn.microsoft.com/en-us/dotnet/core/extensions/logging"

@@ -32,6 +32,42 @@
       ]
     }
   ],
+  "tooling": [
+    {
+      "concern": "lint-config",
+      "kit": {
+        "name": "clippy + rustfmt config",
+        "markers": [
+          {
+            "file": "clippy.toml"
+          },
+          {
+            "file": ".clippy.toml"
+          },
+          {
+            "file": "rustfmt.toml"
+          },
+          {
+            "file": ".rustfmt.toml"
+          }
+        ],
+        "commands": [],
+        "only_when_installed": true,
+        "preset_files": [
+          {
+            "src": "presets/clippy.toml",
+            "dest": "clippy.toml",
+            "mode": "create"
+          },
+          {
+            "src": "presets/rustfmt.toml",
+            "dest": "rustfmt.toml",
+            "mode": "create"
+          }
+        ]
+      }
+    }
+  ],
   "sources": [
     "https://doc.rust-lang.org/cargo/",
     "https://doc.rust-lang.org/clippy/",
