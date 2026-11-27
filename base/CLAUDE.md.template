@@ -21,7 +21,7 @@
 - Never write to a `.env` file or commit secrets.
 - Never force-push or bulk-delete files without explicit confirmation.
 - Run the verification command before declaring a task complete.
-- If a rule in this file contradicts the existing code, flag it instead of guessing.
+- If a rule in this file contradicts the existing code, flag it instead of guessing.{{ORG_RULES}}
 
 ## Lessons Learned
 <!-- Add 1 to 3 lines here per non-obvious gotcha discovered (observation / why / rule). -->
