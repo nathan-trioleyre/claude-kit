@@ -217,6 +217,31 @@ class TestToolingConflicts(unittest.TestCase):
             self.assertIn("curl", err)
             self.assertIn("duplicated", err)
 
+    def test_poetry_with_ruff_or_flake8_keeps_correct_linter_commands(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            apply_bin = apply_bin_of(kit_with_real_profiles(t, "python"))
+
+            # Poetry + ruff (no linter conflict) keeps poetry run ruff lint/format/verify
+            proj_ruff = t / "poetry-ruff"
+            write(proj_ruff / "pyproject.toml", "[tool.poetry]\nname = 'x'\n")
+            write(proj_ruff / "poetry.lock", "")
+            run_apply(apply_bin, "apply", "--project", str(proj_ruff), "--profiles", "python")
+            md_ruff = (proj_ruff / "CLAUDE.md").read_text(encoding="utf-8")
+            self.assertIn("- Lint: `poetry run ruff check .`", md_ruff)
+            self.assertIn("- Verify (before concluding a task): `poetry run ruff check . && poetry run pytest`", md_ruff)
+
+            # Poetry + flake8 (both package-manager and linter kept): flake8 wins for lint
+            proj_f8 = t / "poetry-flake8"
+            write(proj_f8 / "pyproject.toml", "[tool.poetry]\nname = 'x'\n")
+            write(proj_f8 / "poetry.lock", "")
+            write(proj_f8 / ".flake8", "[flake8]\n")
+            run_apply(apply_bin, "apply", "--project", str(proj_f8), "--profiles", "python")
+            md_f8 = (proj_f8 / "CLAUDE.md").read_text(encoding="utf-8")
+            self.assertIn("- Install: `poetry install`", md_f8)
+            self.assertIn("- Lint: `flake8`", md_f8)
+            self.assertNotIn("`poetry run ruff check", md_f8)
+
 
 if __name__ == "__main__":
     unittest.main()

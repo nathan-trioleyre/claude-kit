@@ -338,15 +338,18 @@ class TestApply(unittest.TestCase):
     def test_base_agents_skills_and_org_rules_synced(self):
         with tempfile.TemporaryDirectory() as tmp:
             kit, apply_bin, proj = self._kit_and_project(tmp)
+            (kit / "base" / "agents").mkdir(parents=True)
+            (kit / "base" / "agents" / "helper.md").write_text("---\nname: helper\n---\nHelp.\n", encoding="utf-8")
             org = kit / "org"
             (org / "rules").mkdir(parents=True)
             (org / "rules" / "security.md").write_text("---\npaths:\n  - \"src/**\"\n---\nNo eval.\n", encoding="utf-8")
+            (org / "skills" / "deploy").mkdir(parents=True)
+            (org / "skills" / "deploy" / "SKILL.md").write_text("---\nname: deploy\n---\nDeploy.\n", encoding="utf-8")
 
             ctx = json.dumps({"stop_verify": True})
             run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python", "--context", "-", input=ctx)
-            self.assertTrue((proj / ".claude" / "agents" / "code-reviewer.md").is_file())
-            self.assertTrue((proj / ".claude" / "skills" / "verify" / "SKILL.md").is_file())
-            self.assertTrue((proj / ".claude" / "skills" / "wrap-up" / "SKILL.md").is_file())
+            self.assertTrue((proj / ".claude" / "agents" / "helper.md").is_file())
+            self.assertTrue((proj / ".claude" / "skills" / "deploy" / "SKILL.md").is_file())
             self.assertTrue((proj / ".claude" / "rules" / "security.md").is_file())
             kj = json.loads((proj / ".claude" / "kit.json").read_text(encoding="utf-8"))
             self.assertTrue(kj["stop_verify"])
@@ -384,12 +387,64 @@ class TestApply(unittest.TestCase):
             self.assertIn(".claude/kit.json", exclude)
             self.assertIn(".claude/hooks/guard.py", exclude)
 
-            # sync and doctor remember local=True automatically
+            # sync, re-apply, and doctor remember local=True automatically
             run_apply(apply_bin, "sync", "--project", str(proj))
+            run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python")
+            self.assertEqual((proj / "CLAUDE.md").read_text(encoding="utf-8"), team_md)
             doctor = run_apply(apply_bin, "doctor", "--project", str(proj))
             self.assertEqual(doctor.returncode, 0, doctor.stdout)
             self.assertIn("CLAUDE.local.md fully filled", doctor.stdout)
             self.assertIn(".claude/settings.local.json has every kit permission and hook", doctor.stdout)
+
+    def test_sync_preserves_custom_verify_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, apply_bin, proj = self._kit_and_project(tmp)
+            ctx = json.dumps({"commands_override": {"python": {"verify": "pytest -q"}}})
+            run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python", "--context", "-", input=ctx)
+            run_apply(apply_bin, "sync", "--project", str(proj))
+            kj = json.loads((proj / ".claude" / "kit.json").read_text(encoding="utf-8"))
+            self.assertEqual(kj["verify_command"], "pytest -q")
+
+    def test_versioned_practices_and_stack_versions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            kit = t / "kit"
+            copy_kit(kit)
+            shutil.copytree(KIT / "profiles" / "angular", kit / "profiles" / "angular")
+            apply_bin = kit / "skills" / "claude-kit" / "scripts" / "apply.py"
+
+            proj = t / "ng11"
+            proj.mkdir()
+            ctx = json.dumps({"stack_versions": {"angular": "11.2"}})
+            run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "angular", "--context", "-", input=ctx)
+
+            claude_md = (proj / "CLAUDE.md").read_text(encoding="utf-8")
+            self.assertIn("Angular (Angular CLI + npm) (v11.2)", claude_md)
+            self.assertIn("Angular 11: use `NgModule`", claude_md)
+            self.assertNotIn("Angular 21+:", claude_md)
+            kj = json.loads((proj / ".claude" / "kit.json").read_text(encoding="utf-8"))
+            self.assertEqual(kj["profiles"]["angular"]["version"], "11.2")
+
+            # Re-running apply without repeating stack_versions preserves v11.2
+            run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "angular")
+            self.assertFalse((proj / "CLAUDE.md.proposed").exists())
+
+    def test_local_mode_preserves_team_mcp_and_excludes_new_mcp(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            kit, apply_bin, proj = self._kit_and_project(tmp)
+            (kit / "org" / "mcp.json").write_text(json.dumps({"mcpServers": {"jira": {"type": "http", "url": "https://x"}}}), encoding="utf-8")
+            (proj / ".git" / "info").mkdir(parents=True)
+            team_mcp = json.dumps({"mcpServers": {"team": {"command": "t"}}})
+            (proj / ".mcp.json").write_text(team_mcp, encoding="utf-8")
+            run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python", "--local")
+            self.assertEqual((proj / ".mcp.json").read_text(encoding="utf-8"), team_mcp)
+
+            # When .mcp.json did not exist, creating it in local mode adds it to .git/info/exclude
+            proj2 = Path(tmp) / "proj2"
+            (proj2 / ".git" / "info").mkdir(parents=True)
+            run_apply(apply_bin, "apply", "--project", str(proj2), "--profiles", "python", "--local")
+            self.assertTrue((proj2 / ".mcp.json").is_file())
+            self.assertIn(".mcp.json", (proj2 / ".git" / "info" / "exclude").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
