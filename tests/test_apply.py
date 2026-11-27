@@ -352,6 +352,45 @@ class TestApply(unittest.TestCase):
             self.assertTrue(kj["stop_verify"])
             self.assertEqual(kj["verify_command"], "pytest && ruff check .")
 
+    def test_local_mode_preserves_team_files_and_uses_git_exclude(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            kit, apply_bin, proj = self._kit_and_project(tmp)
+            (proj / ".git" / "info").mkdir(parents=True)
+            team_md = "# Team Project\n\n## Stack\n- Python\n\n## Architecture\n- src/\n"
+            team_settings = json.dumps({"permissions": {"allow": ["Bash(make test*)"]}}, indent=2) + "\n"
+            team_gitignore = "__pycache__/\n"
+            (proj / "CLAUDE.md").write_text(team_md, encoding="utf-8")
+            (proj / ".claude").mkdir(exist_ok=True)
+            (proj / ".claude" / "settings.json").write_text(team_settings, encoding="utf-8")
+            (proj / ".gitignore").write_text(team_gitignore, encoding="utf-8")
+
+            run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python", "--local")
+
+            # Team files untouched
+            self.assertEqual((proj / "CLAUDE.md").read_text(encoding="utf-8"), team_md)
+            self.assertEqual((proj / ".claude" / "settings.json").read_text(encoding="utf-8"), team_settings)
+            self.assertEqual((proj / ".gitignore").read_text(encoding="utf-8"), team_gitignore)
+
+            # Local files created (delta-only CLAUDE.local.md)
+            local_md = (proj / "CLAUDE.local.md").read_text(encoding="utf-8")
+            self.assertIn("Team CLAUDE.md already present", local_md)
+            self.assertNotIn("## Architecture", local_md)
+            self.assertTrue((proj / ".claude" / "settings.local.json").is_file())
+
+            # .git/info/exclude hides kit files without hiding .claude/ entirely
+            exclude = (proj / ".git" / "info" / "exclude").read_text(encoding="utf-8")
+            self.assertIn("CLAUDE.local.md", exclude)
+            self.assertIn(".claude/settings.local.json", exclude)
+            self.assertIn(".claude/kit.json", exclude)
+            self.assertIn(".claude/hooks/guard.py", exclude)
+
+            # sync and doctor remember local=True automatically
+            run_apply(apply_bin, "sync", "--project", str(proj))
+            doctor = run_apply(apply_bin, "doctor", "--project", str(proj))
+            self.assertEqual(doctor.returncode, 0, doctor.stdout)
+            self.assertIn("CLAUDE.local.md fully filled", doctor.stdout)
+            self.assertIn(".claude/settings.local.json has every kit permission and hook", doctor.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
