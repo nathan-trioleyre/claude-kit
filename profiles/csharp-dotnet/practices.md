@@ -1,0 +1,9 @@
+- Follow the Microsoft C# coding conventions and the repo's `.editorconfig`; run `dotnet format` before finishing.
+- Respect `global.json` and `Directory.Build.props`; do not change SDK or target framework without asking.
+- Keep nullable reference types enabled and fix warnings rather than suppressing them.
+- Use `async`/`await` end to end; never block with `.Result` or `.Wait()`; pass `CancellationToken` through.
+- Use dependency injection (constructor injection); avoid static state and service locators.
+- Use `ILogger<T>` with message templates (never string interpolation); `[LoggerMessage]` source generation is the recommended high-performance option.
+- Tests: one test project per source project, `dotnet test`; arrange/act/assert, no shared mutable state.
+- Secrets: user secrets or environment variables in development (user secrets are dev-only, not encrypted); production secrets from Key Vault or an equivalent store; never in committed `appsettings*.json`.
+- New solutions default to the `.slnx` format with SDK 10+ (`dotnet new sln --format sln` for the old one).

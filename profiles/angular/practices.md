@@ -1,0 +1,10 @@
+- Follow the Angular style guide; generate code with `ng generate` so file names and structure stay standard.
+- Prefer standalone components, `inject()` and signals over NgModules and constructor-heavy patterns, unless the project is NgModule-based.
+- Use `ChangeDetectionStrategy.OnPush` on new components and keep templates free of logic.
+- Use the built-in control flow (`@if`, `@for`) in new templates when the Angular version supports it.
+- Unsubscribe automatically: `async` pipe, `takeUntilDestroyed`, or `toSignal`; no manual subscribe leaks.
+- Keep `strict` TypeScript and strict templates on; avoid `any`.
+- Use `npm ci` for reproducible installs; do not edit `package-lock.json` by hand.
+- New projects are zoneless by default (Angular 21+): do not rely on zone.js; keep change detection signal-friendly.
+- Tests: use the project's configured runner (Vitest is the default for new projects since v21, Karma/Jasmine is the alternative); test behavior through the DOM, not private members.
+- `ng lint` is not built in: it needs `ng add angular-eslint`; use the project's own lint script if it has one.

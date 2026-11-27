@@ -1,0 +1,47 @@
+{
+  "stack": "python",
+  "display_name": "Python (uv + ruff + pytest)",
+  "detect": [
+    "pyproject.toml",
+    "requirements*.txt",
+    "setup.py",
+    "Pipfile"
+  ],
+  "commands": {
+    "install": "uv sync",
+    "dev": null,
+    "test": "uv run pytest",
+    "lint": "uv run ruff check .",
+    "format": "uv run ruff format .",
+    "build": "uv build",
+    "verify": "uv run ruff check . && uv run pytest"
+  },
+  "permissions_allow": [
+    "Bash(uv sync*)",
+    "Bash(uv run pytest*)",
+    "Bash(uv run ruff*)",
+    "Bash(uv run mypy*)",
+    "Bash(pytest*)",
+    "Bash(ruff*)",
+    "Bash(mypy*)"
+  ],
+  "format_rules": [
+    {
+      "extensions": [
+        ".py"
+      ],
+      "command": [
+        "ruff",
+        "format",
+        "{file}"
+      ]
+    }
+  ],
+  "sources": [
+    "https://docs.astral.sh/uv/",
+    "https://docs.astral.sh/ruff/",
+    "https://docs.pytest.org/",
+    "https://peps.python.org/pep-0008/"
+  ],
+  "last_verified": "2026-11-27"
+}

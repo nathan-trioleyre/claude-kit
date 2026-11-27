@@ -1,0 +1,8 @@
+- Manage dependencies and the virtualenv with `uv` (`pyproject.toml` + lockfile); never `pip install` into the global interpreter.
+- Commit the lockfile; add dependencies with `uv add`, not by editing versions by hand.
+- Format and lint with `ruff` only; do not mix in black/isort/flake8 unless the project already does.
+- Type-hint all public functions; keep `mypy`/`pyright` clean if the project configures one.
+- Tests live in `tests/`, run with `pytest`; one behavior per test, fixtures over setup code.
+- Use `pathlib` for paths, `logging` instead of `print`, and context managers for resources.
+- Never use mutable default arguments; never catch bare `except:`.
+- Read configuration and secrets from environment variables, never from committed files.

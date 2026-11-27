@@ -1,0 +1,50 @@
+{
+  "stack": "angular",
+  "display_name": "Angular (Angular CLI + npm)",
+  "detect": [
+    "angular.json"
+  ],
+  "paths": [],
+  "commands": {
+    "install": "npm ci",
+    "dev": "npm start",
+    "test": "npm test -- --watch=false",
+    "lint": null,
+    "format": null,
+    "build": "npm run build",
+    "verify": "npm test -- --watch=false && npm run build"
+  },
+  "permissions_allow": [
+    "Bash(npm ci)",
+    "Bash(npm test*)",
+    "Bash(npm run build*)",
+    "Bash(npm run lint*)",
+    "Bash(ng test*)",
+    "Bash(ng build*)",
+    "Bash(ng lint*)"
+  ],
+  "format_rules": [
+    {
+      "extensions": [
+        ".ts",
+        ".html",
+        ".scss",
+        ".css",
+        ".json"
+      ],
+      "command": [
+        "prettier",
+        "--write",
+        "{file}"
+      ]
+    }
+  ],
+  "sources": [
+    "https://angular.dev/style-guide",
+    "https://angular.dev/tools/cli",
+    "https://angular.dev/best-practices",
+    "https://angular.dev/guide/zoneless",
+    "https://angular.dev/guide/testing/migrating-to-vitest"
+  ],
+  "last_verified": "2026-11-27"
+}
