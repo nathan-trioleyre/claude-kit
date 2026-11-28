@@ -1,8 +1,8 @@
 ---
 name: claude-kit
-description: Configures Claude Code for the current project (CLAUDE.md, modular rules, permissions, security and formatting hooks) by detecting the stack, then reusing or creating a stack profile in claude-kit. Use when the user types /claude-kit, lands on a new or existing project, or asks to set up, check (`doctor`) or update (`sync`) Claude's configuration for a project.
+description: Configures Claude Code for the current project (CLAUDE.md, rules, permissions, hooks) by detecting its stack and reusing a claude-kit profile; also runs doctor, sync, and uninstall.
 disable-model-invocation: true
-argument-hint: "[local | doctor | sync]"
+argument-hint: "[local | doctor | sync | uninstall]"
 ---
 
 # /claude-kit: prepare Claude Code for this project
@@ -13,6 +13,8 @@ You are configuring the current project from the user's **claude-kit** repositor
 - The `apply.py` script handles everything mechanical that must stay identical across projects: detecting known profiles, validating profiles, copying hooks, merging `settings.json`, and generating `CLAUDE.md` / `.claude/rules/*.md`.
 - **You** handle what a script cannot do: understanding the project, creating or updating stack profiles from official documentation, and writing the real architecture, gotchas, and monorepo `rule_paths`.
 
+Before modifying an existing `settings.json` / `settings.local.json`, the script writes a `<name>.bak` backup next to it. Memory: Claude Code's native auto-memory covers it; the kit generates no root `MEMORY.md` (`/handoff` writes `.claude/handoff.md` instead).
+
 Only write into the project through `apply.py`, except when merging a user-approved `.proposed` file (Step 5), applying user-approved TOML manifest snippets or running approved package installs (Step 3c), or carrying out a user-approved migration plan (Step 3b).
 
 **Existing setups are never overridden silently.** If the project already has its own CLAUDE.md, hooks, formatter, linter or package manager, Step 1b detects it and Step 3b has the user decide, one conflict at a time. Until a decision is recorded, the script withholds the kit's overlapping rules. If a project has **no** linter/formatter configured yet, Step 3c offers the profile's strict preset (plus optional `.editorconfig` and `.githooks/pre-commit`) before `apply.py apply`.
@@ -21,6 +23,7 @@ Only write into the project through `apply.py`, except when merging a user-appro
 - empty: full setup, Steps 0 to 6 below.
 - `local`: full setup in stealth/personal mode for shared team repositories (pass `--local` to `APPLY apply`). Writes `CLAUDE.local.md` and `.claude/settings.local.json`, records exclusions in `.git/info/exclude`, and never touches `.gitignore`, team `CLAUDE.md`, or team `.claude/settings.json`. Later `sync` and `doctor` remember this mode automatically.
 - `doctor`: Step 0, then run `APPLY doctor --project .` and explain each `ISSUE` in plain English. Then propose the right fix: `sync` for outdated hooks/settings, a full `/claude-kit` for new stacks or refreshed profiles, Step 3b for a `tooling conflict`, and Step 3b (option "adopt the kit") to finish a migration reported as `finish the migration`. Write nothing yourself.
+- `uninstall`: Step 0, then `APPLY uninstall --project . --dry-run`, summarize, ask for confirmation, re-run without `--dry-run`. It removes unmodified kit-managed files, kit hooks, kit-added permissions, kit ignore lines and `kit.json`; `CLAUDE.md`, `CLAUDE.local.md` and `.claude/rules/` are left for manual review (tell the user).
 - `sync`: Step 0, then `APPLY sync --project . --dry-run`, summarize, ask for confirmation, re-run without `--dry-run`. This refreshes kit-managed files only (settings, hooks, agents/commands/rules/skills, `.mcp.json`, `kit.json`); `CLAUDE.md` is not touched. Recorded tooling decisions are respected; a new undecided conflict is reported (`! CONFLICT`): resolve it with Step 3b (`APPLY decide`, then `sync`). If a hook is reported `skipped ... modified locally`, show the diff against the kit's copy and ask before using `--force-hooks`.
 
 ## Step 0: locate the kit
@@ -52,13 +55,20 @@ Run `APPLY audit --project .` (JSON). It reports:
 
 If the project has nothing of its own (`existing` empty, no `tooling` entries), skip Step 3b (still run Step 3c in non-local mode for `missing_tooling`, `.editorconfig`, and `.githooks/pre-commit`).
 
+## Step 1c: FAST PATH (first run, non-`sync`/`doctor`)
+
+After Steps 1 and 1b, show **one** summary table: detected stacks (with/without profile), conflicts with the recommended choice each, missing tooling with the recommended preset, and the files that will be created or proposed. Then ask a single question: **Apply all recommendations / Review one by one / Cancel**.
+- **Apply all**: take every recommendation (Step 3b recommended side, `adopt_kit` for accepted missing tooling), skip the per-item questions, and go to Step 4. Migration plans for `adopt_kit` on an existing tool still need explicit approval (Step 3b).
+- **Review one by one**: continue with Steps 2 to 3c as written, one question at a time.
+- **Cancel**: stop, write nothing.
+
 ## Step 2: one profile per stack
 
 Run `APPLY list`, then for each stack in the project:
 
 - **Existing and recent profile** (`stale: false`): use it as-is without re-researching. If the project uses a specific major version and `KIT/profiles/<stack>/versions/<major>.md` does not exist yet, check official docs for that version, write `versions/<major>.md` (8 lines max, version-specific rules only), validate with `APPLY validate --profiles <stack>`, and wait for user approval before saving.
 - **Existing but stale profile** (`stale: true`, older than 90 days, which also covers starter profiles shipped unverified): tell the user and offer to refresh it now (`/claude-kit-refresh` procedure) or continue with the old one.
-- **No profile**: create it.
+- **No profile**: do NOT research mid-setup. Generate `CLAUDE.md` without a profile (project commands and architecture only), then offer at the end to create the profile afterwards (same flow as `/claude-kit-refresh`: official docs, validate, show, save after approval). Only if the user asks for it right now, create it as follows:
   1. Search official documentation using `WebSearch` and `WebFetch` for **current** best practices (language, framework, tools). Tailor to what the project actually uses (e.g., `uv` or `poetry`, framework version read from the manifest).
   2. Write `profile.json` and `practices.md` following `KIT/profiles/_TEMPLATE/`. Constraints:
      - stack name in lowercase, no spaces (`python`, `csharp-dotnet`, `angular`);
@@ -106,9 +116,9 @@ Record every answer in the context JSON (Step 3): `"decisions": { "<stack>": { "
 
 Skip this step completely in `local` mode (`--local` must never modify repo-wide configs).
 
-1. For each entry in `missing_tooling`, **one at a time**, present the kit's strict preset (tool, key AI-guardrail rules, files to create, packages/scripts to add) and ask: **install preset** or **skip**.
-   - If **install**: run `APPLY scaffold-tooling --project . --profile <stack> --concern <concern>` (after `--dry-run` confirmation if desired), apply any printed `SNIPPET` to `pyproject.toml`/`Cargo.toml` with user approval, and install the listed `install_packages` using the project's package manager (respecting `guard.py` supply-chain rules).
-   - If **skip**: record `"<concern>": "skip"` in Step 3 `decisions` so its commands, hooks, and `verify` steps are withheld cleanly.
+1. Present **one grouped question** for all `missing_tooling` entries: a table of concern, the kit's strict preset (tool, key AI-guardrail rules, files to create, packages/scripts to add) and a recommendation, then ask: **install all / choose per concern / skip all**. A "missing" concern is withheld by the engine until a decision `adopt_kit` is recorded.
+   - **Accepted** (preset installed): record `"decisions": {"<stack>": {"<concern>": "adopt_kit"}}` in the Step 3 context JSON, run `APPLY scaffold-tooling --project . --profile <stack> --concern <concern>`, apply any printed `SNIPPET` to `pyproject.toml`/`Cargo.toml` with user approval, and install the listed `install_packages` using the project's package manager (respecting `guard.py` supply-chain rules).
+   - **Declined**: record `"<concern>": "skip"` so its commands, hooks, and `verify` steps stay withheld.
 2. If root `.editorconfig` is missing, offer `APPLY scaffold-tooling --project . --base-preset editorconfig`.
 3. If no git hook setup (`.husky/`, `.pre-commit-config.yaml`, `lefthook.yml`, `.githooks/`) exists, offer `APPLY scaffold-tooling --project . --base-preset pre-commit` and, if approved, activate it locally with `git config core.hooksPath .githooks`.
 4. If `.github/workflows/` has no CI workflow, offer `APPLY scaffold-tooling --project . --base-preset ci` to generate `.github/workflows/ci.yml` from the active profiles.
@@ -119,7 +129,7 @@ Complete Step 3c **before** Step 4 so `apply.py apply` detects the newly scaffol
 
 Run `APPLY apply --project . --profiles <stacks...> --context - --dry-run` (omit `--profiles` if no stack profile applies yet).
 
-Summarize the result in plain English (what will be created, merged, upgraded, or skipped, plus any unified diff shown for existing files) and ask the user for confirmation.
+If the dry run shows nothing existing being overwritten or merged (no `.proposed` file, no merge into existing settings) and there are no conflicts, skip the confirmation: go straight to Step 5 and report. Otherwise summarize in plain English (created, merged, upgraded, skipped, plus unified diffs) and ask for confirmation.
 
 ## Step 5: apply
 
@@ -130,16 +140,13 @@ If any `.proposed` file was created (`CLAUDE.md.proposed` or `.claude/rules/<sta
 ## Step 6: wrap up
 
 Provide a brief summary:
-- what was created or modified in the project (ready to commit);
-- any new profile saved to the kit (ready to commit in the kit repo: `git -C KIT status`);
+- what was created or modified in the project (ready to commit) and any new profile saved to the kit (`git -C KIT status`); for a stack without profile, offer to create it now;
 - any `CLAUDE.md` sections still marked `_To be completed._`;
-- a reminder: restart the Claude Code session so hooks are loaded, and verify with `/hooks`;
-- mention `/commit` and `/handoff` (plus `.claude/codemap.md` and `APPLY stats --project .`);
-- if the project's `CLAUDE.md` has a filled "Lessons Learned" section, mention `/claude-kit-learn` to promote durable lessons into the kit.
+- restart the Claude Code session so hooks load (verify with `/hooks`); mention `/commit`, `/handoff`, `/review`, `/pr`, and `/claude-kit-learn` if "Lessons Learned" is filled.
 
 ## Rules
 
-- Ask only one question at a time.
+- Ask one question at a time, except the fast-path question (Step 1c) and the grouped presets question (Step 3c).
 - Never modify files in `KIT/base/` (hooks, base settings): if you think a change is needed, propose it to the user.
 - Never save an unapproved or unvalidated profile.
 - Never remove or replace a tool the project already uses without an explicit `adopt_kit` decision and an approved plan.

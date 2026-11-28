@@ -41,7 +41,7 @@ Wait for approval (the user may accept only part of the changes). Then apply the
 ## Step 4: wrap up
 
 - Remind the user to commit the change in the kit repository.
-- Clarify that **already-configured projects are not modified automatically**: `/claude-kit sync` refreshes a project's permissions and hooks, and re-running `/claude-kit` writes a proposed `CLAUDE.md.proposed` if the generated content changed (never overwriting existing content). `/claude-kit doctor` lists the projects' drift.
+- Clarify that **already-configured projects are not modified automatically**: `/claude-kit sync` refreshes a project's permissions and hooks (backing up existing settings to `.bak`), and re-running `/claude-kit` writes a proposed `CLAUDE.md.proposed` if the generated content changed (never overwriting existing content). `/claude-kit doctor` lists the projects' drift.
 
 ## Rules
 

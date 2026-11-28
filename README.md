@@ -1,6 +1,6 @@
 # claude-kit
 
-A personal kit that prepares Claude Code for any project (Python, C#, Angular, TypeScript, Next.js, Docker, Rust, and any future stack) with a single command: `/claude-kit`.
+A personal kit that prepares Claude Code for any project (Python, C#, Angular, TypeScript, Next.js, Docker, Rust, Java/Spring, Go, PHP, React/Vite, Vue, and any future stack) with a single command: `/claude-kit`.
 
 ## The 30-second overview
 
@@ -20,6 +20,7 @@ Afterwards, the kit keeps projects aligned:
 | `/claude-kit local` | **Personal, invisible** setup for shared team repos (`CLAUDE.local.md`, `.claude/settings.local.json`, `.git/info/exclude` — never touches `.gitignore`, team `CLAUDE.md`, or team `settings.json`) |
 | `/claude-kit doctor` | Reports drift: outdated hooks, missing permissions, stale profiles, new stacks, unfilled `CLAUDE.md` sections, unresolved tooling conflicts |
 | `/claude-kit sync` | Refreshes only kit-managed files (settings, hooks, agents/commands/rules/skills, `.mcp.json`); never touches `CLAUDE.md` |
+| `/claude-kit uninstall` | Removes unmodified kit-managed files, kit hooks, kit-added permissions, ignore lines and `kit.json` (`apply.py uninstall --project . [--dry-run]`); `CLAUDE.md`, `CLAUDE.local.md` and rules are left for manual review |
 | `/claude-kit-refresh [stack\|all]` | Re-reads official sources for a profile and proposes updates |
 | `/claude-kit-learn` | Promotes durable lessons from a project's `CLAUDE.md` back into the kit (profile, `org/`, or `base/`) |
 
@@ -35,16 +36,16 @@ On a project that already has its own `CLAUDE.md`, hooks, formatter, linter, or 
 
 Conflict detection is driven by the optional `tooling` section in each profile (see [profiles/README.md](profiles/README.md)).
 
-## Layers (5-layer model)
+## Layers
 
-`base/` (all projects) → `org/` (optional, your company) → `profiles/<stack>/` (per stack) → the project itself.
+Four layers: `base/` (all projects) → `org/` (optional, your company) → `profiles/<stack>/` (per stack) → the project itself.
 Each layer only **adds** to the previous one. See [org/README.md](org/README.md) for the company layer (shared rules, permissions, MCP servers, agents, commands, modular rules, skills).
 
-In each configured project, the kit aligns with the **5 Claude Code layers**:
-1. **`CLAUDE.md` & `MEMORY.md`**: `CLAUDE.md` for invariants, commands, architecture, and gotchas (≤ 80 lines, 40–60 sweet spot; `@file` imports supported), plus `MEMORY.md` as a lightweight inter-session state index (≤ 150 lines).
+In each configured project, the kit sets up these Claude Code building blocks:
+1. **`CLAUDE.md`**: invariants, commands, architecture, and gotchas (40–60 lines target; `@file` imports supported). Memory is Claude Code's native auto-memory; for pausing work, `/handoff` writes a short `.claude/handoff.md` (gitignored), which the SessionStart hook points to.
 2. **`.claude/rules/*.md`**: modular rules scoped by `paths` (monorepos, `base/rules/`, `org/rules/`).
-3. **`.claude/skills/`** (and `commands/`): optional on-demand workflows from `base/` (`/commit`, `/handoff`) or `org/`.
-4. **`.claude/agents/` & `.claude/codemap.md`**: optional isolated subagents from `base/` or `org/`, plus a compact auto-generated project codemap to save exploration tokens.
+3. **`.claude/skills/`** (and `commands/`): optional on-demand workflows from `base/` (`/commit`, `/handoff`, `/review`, `/pr`) or `org/`.
+4. **`.claude/agents/` & `.claude/codemap.md`**: isolated subagents from `base/` (`code-reviewer`) or `org/`, plus a compact auto-generated project codemap to save exploration tokens.
 5. **Hooks (`.claude/settings.json`) & Observability**: deterministic guardrails (`SessionStart` with `session-check.py` including `~/.npmrc` supply-chain checks, `PreToolUse` with `guard.py`, `PostToolUse` with `format.py` running `lint_rules` then `format_rules`, and `Stop` with `verify-stop.py` active by default whenever `verify_command` is set — opt-out via `"stop_verify": false` in `.claude/kit.json`). Hook blocks and session token/cost usage are logged to `.claude/logs/` and summarized via `apply.py stats` (and `doctor` / `/claude-kit-learn`). Also optional `.github/workflows/ci.yml` (`--base-preset ci`) and `.githooks/pre-commit` (with `gitleaks` if installed).
 
 ## Division of labor
@@ -78,16 +79,18 @@ claude-kit/
 ├── install.py                  installs skills (copy or --link) + records kit and Python paths
 ├── base/                       shared across ALL projects
 │   ├── CLAUDE.md.template      CLAUDE.md skeleton
-│   ├── MEMORY.md.template      MEMORY.md inter-session state skeleton
 │   ├── settings.base.json      hardened permissions + hook wiring
 │   ├── hooks/                  run-hook.sh, guard.py, format.py, session-check.py, verify-stop.py
-│   └── agents/ commands/ rules/ skills/   optional: copied into each project if present
+│   ├── agents/                 code-reviewer subagent
+│   ├── skills/                 commit, handoff, review, pr
+│   └── commands/ rules/        optional: copied into each project if present
 ├── org/                        optional company layer (rules, permissions, MCP, agents, commands, skills)
 ├── profiles/                   one folder per stack
-│   ├── python/ csharp-dotnet/ angular/ typescript/ nextjs/ docker/ rust/   built-in profiles
+│   ├── python/ csharp-dotnet/ angular/ typescript/ nextjs/ docker/ rust/
+│   │   java-spring/ go/ php/ react-vite/ vue/   built-in profiles
 │   └── _TEMPLATE/              template for writing a profile by hand
 ├── skills/
-│   ├── claude-kit/             /claude-kit (+ scripts/apply.py CLI, logic in scripts/kitlib/)
+│   ├── claude-kit/             /claude-kit (+ scripts/apply.py thin CLI, logic in scripts/kitlib/, incl. doctor and audit modules)
 │   ├── claude-kit-refresh/     /claude-kit-refresh
 │   └── claude-kit-learn/       /claude-kit-learn
 └── tests/                      dependency-free unittest suite
@@ -103,6 +106,8 @@ Any profile whose `last_verified` is older than 90 days is flagged as `stale` by
 - remove a custom permission or hook (additive merge; only updates kit-managed hook commands and matchers);
 - overwrite a locally modified hook (only `sync --force-hooks` does, explicitly);
 - write anything when `--dry-run` is passed.
+
+Before modifying an existing `settings.json` / `settings.local.json`, the kit saves a `<name>.bak` backup next to it.
 
 ## Security model
 

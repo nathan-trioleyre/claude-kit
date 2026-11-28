@@ -20,11 +20,13 @@ argument-hint: "[optional hint or message]"
 ## Step 2: safety & scope check
 
 - **Never stage secrets or local artifacts**: `.env*` (except `.env.example`/`.template`/`.sample`), `*.pem`, `*.key`, `credentials*`, `*.proposed`, `.claude/logs/`.
-- **One logical change per commit**: if the working tree mixes unrelated changes (e.g. a feature and an unrelated fix), propose splitting into separate commits.
-- **Verify first**: if `.claude/kit.json` defines `verify_command` and code files changed, ensure it passes before committing (skip only for pure doc/comment edits or if it already passed on the exact current state).
+- **Check `git status`** for untracked files: stage new files that belong to the change, flag the rest.
+- **One logical change per commit**: if the working tree mixes unrelated changes, split them into separate commits.
+- **Targeted checks, not full verify**: run the tests for the changed files (the targeted/`test_related` command listed in `CLAUDE.md` Commands, if any) and the linter on the changed files only. Skip for pure doc/comment edits. Full verify is for before push/PR (`/pr`).
 
 ## Step 3: stage and commit
 
 1. Propose the files to stage and the commit message (incorporating `$ARGUMENTS` if given).
 2. Stage explicitly (`git add <paths>`) and run `git commit -m "<message>"`.
 3. Never run `git push` unless the user explicitly asked for it.
+4. Never amend or rewrite commits that were already pushed; make a new commit instead.

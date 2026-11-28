@@ -12,8 +12,8 @@ Do Step 0 of `/claude-kit` (`Read` `~/.claude/claude-kit.json` for `kit_path` = 
 
 ## Step 1: collect candidates
 
-1. Read the project's `CLAUDE.md` (and `CLAUDE.local.md` if present — look at "Lessons Learned" and "Known Gotchas"), `MEMORY.md` (entries older than 30 days), and `.claude/rules/*.md`.
-2. Read `.claude/logs/harness.log` if present: if `guard.py` or `verify-stop.py` blocked the same command/rule >= 4 times, propose a `CLAUDE.md` Failure Log entry explaining the rule and the exact alternative to use.
+1. Read the project's `CLAUDE.md` (and `CLAUDE.local.md` if present — look at "Lessons Learned" and "Known Gotchas"), `.claude/handoff.md` if present (recent decisions and gotchas), and `.claude/rules/*.md`.
+2. Read `.claude/logs/harness.log` if present: if `guard.py` or `verify-stop.py` blocked the same command/rule >= 4 times, propose a Lessons Learned entry for the project `CLAUDE.md` explaining the rule and the exact alternative to use.
 3. Read `.claude/kit.json` to know which profiles the project uses.
 4. Keep only lessons that are **general to a stack or to all projects** (a framework pitfall, a tooling flag, a safety rule). Discard anything specific to this codebase (names, paths, business rules). Format project-level additions in **Failure Log** style: `- [YYYY-MM-DD] Rule — Alternative: <what to use instead> (Cause: <bug/incident>)`.
 
@@ -25,6 +25,8 @@ Do Step 0 of `/claude-kit` (`Read` `~/.claude/claude-kit.json` for `kit_path` = 
 | One stack (version-specific) | `KIT/profiles/<stack>/versions/<major>.md` (8 non-empty lines max) |
 | Every project of the user's company | `KIT/org/rules.md` |
 | Every project, safety or workflow | `KIT/base/CLAUDE.md.template` (propose the exact edit, never apply silently) |
+
+The project's `CLAUDE.md` is the source: lessons are **promoted from the project to the kit**. The project `CLAUDE.md` is edited only with the user's approval (for example to remove or mark a lesson once promoted, or to add a log-derived entry).
 
 ## Step 3: propose, validate, save
 

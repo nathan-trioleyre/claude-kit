@@ -1,27 +1,19 @@
 ---
 name: handoff
-description: Save a concise inter-session state summary into ./MEMORY.md (Decisions, Active WIP, Known Issues) before /clear, /compact, or ending a session. Use when the user types /handoff or wants to pause and resume work cleanly later.
+description: Write a short session handoff note to .claude/handoff.md before /clear, /compact, or ending a session. Use when the user types /handoff or wants to pause and resume work cleanly later.
 disable-model-invocation: true
 argument-hint: "[optional focus or next step]"
 ---
 
-# /handoff: persist inter-session state in ./MEMORY.md
+# /handoff: save session state to .claude/handoff.md
 
-## Step 1: inspect current state
-
-1. Read `./MEMORY.md` if it exists (create it from the `## Decisions`, `## Active WIP`, `## Known Issues` structure if missing).
-2. Run `git status -sb` and `git branch --show-current` to capture the exact working state.
-
-## Step 2: update `./MEMORY.md` cleanly
-
-- Use today's ISO date (`[YYYY-MM-DD]`) on every new or updated bullet.
-- Keep each entry **under 150 characters** (concise pointer, not a narrative):
-  - `## Decisions`: durable architectural or tooling choices made in this session.
-  - `## Active WIP`: current branch/task, what is done, and the exact next step (incorporate `$ARGUMENTS` if provided).
-  - `## Known Issues`: unresolved blockers, failing checks, or workarounds.
-- **Prune stale WIP**: remove completed `Active WIP` items so `./MEMORY.md` stays **under 150 lines** (Claude Code truncates at 200 lines / 25 KB).
-- If any existing entry is older than 30 days and still relevant as a permanent rule, suggest promoting it to `CLAUDE.md` via `/claude-kit-learn`.
-
-## Step 3: wrap up
-
-Show the updated `./MEMORY.md` diff and remind the user they can safely run `/clear` or start a new session.
+1. Run `git status -sb` and `git branch --show-current`.
+2. **Overwrite** `.claude/handoff.md` (create `.claude/` if needed) with at most 40 lines:
+   - `## Goal`: what this work is for (incorporate `$ARGUMENTS` if given).
+   - `## Done`: completed items.
+   - `## In progress`: current task and exact state.
+   - `## Next steps`: ordered, concrete actions.
+   - `## Gotchas`: blockers, failing checks, workarounds, decisions worth remembering.
+   - `## Branch`: branch name and uncommitted state.
+3. The file is gitignored by the kit (or in `.git/info/exclude` in local mode); never commit it. The SessionStart hook prints a pointer to it in the next session.
+4. Show the note and tell the user they can safely `/clear`. Suggest `/claude-kit-learn` if a gotcha is durable.
