@@ -33,7 +33,7 @@ def _prune_settings(data: dict, added: dict | None) -> tuple:
         data.pop("hooks", None)
     perms = data.get("permissions")
     if isinstance(perms, dict) and added:
-        for key in ("allow", "deny"):
+        for key in ("allow", "deny", "ask"):
             drop = set(added.get(key, []))
             current = perms.get(key, [])
             kept = [r for r in current if r not in drop]
@@ -93,11 +93,11 @@ def cmd_uninstall(args) -> None:
             if not dry:
                 backup_file(path, dry)
                 path.unlink()
-            report.append(f"removed   {rel} (nothing but kit entries was left; backup in {rel}.bak)")
+            report.append(f"removed   {rel} (nothing but kit entries was left)")
         else:
             backup_file(path, dry)
             write_text(path, json.dumps(data, indent=2, ensure_ascii=False) + "\n", dry)
-            report.append(f"cleaned   {rel} (previous version kept as {rel}.bak)")
+            report.append(f"cleaned   {rel} (the .bak the kit wrote is removed at the end)")
         report.extend(f"           - {n}" for n in notes)
     if all_added is None:
         report.append("note      kit.json predates permission tracking: permission rules the kit added were "
@@ -113,6 +113,11 @@ def cmd_uninstall(args) -> None:
         removed = remove_kit_lines(path, None if recorded_ignore is None else recorded_ignore.get(label, []), dry)
         if removed:
             report.append(f"cleaned   {label} (-{len(removed)} kit line(s))")
+            if (label in kit_json.get("created_files", []) and path.is_file()
+                    and not path.read_bytes().decode("utf-8", errors="replace").strip()):
+                if not dry:
+                    path.unlink()
+                report.append(f"removed   {label} (the kit created it and nothing else was left in it)")
 
     # 4. files that are never deleted automatically
     left = [p for p in ("CLAUDE.md", "CLAUDE.local.md") if (project / p).is_file()]
@@ -121,6 +126,14 @@ def cmd_uninstall(args) -> None:
         report.append(f"left      {rel} (yours: review and delete by hand if you want it gone)")
     if (project / ".claude" / "logs").is_dir():
         report.append("left      .claude/logs/ (session logs)")
+
+    # 4b. backups the kit wrote next to settings
+    for name in ("settings.json.bak", "settings.local.json.bak"):
+        bak = project / ".claude" / name
+        if bak.is_file():
+            if not dry:
+                bak.unlink()
+            report.append(f"removed   .claude/{name} (backup written by the kit)")
 
     # 5. kit.json last
     kit_file = project / ".claude" / "kit.json"

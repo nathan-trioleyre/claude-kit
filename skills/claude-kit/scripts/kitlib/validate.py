@@ -38,6 +38,33 @@ def cmd_list(_args) -> None:
     print(json.dumps(out, ensure_ascii=False, indent=2))
 
 
+def _detect_entry_problem(entry, allow_all: bool) -> str | None:
+    """Why a `detect` entry is invalid, or None. Entries: glob | {file, contains?} | {all: [glob|{file,contains?}]}."""
+    if isinstance(entry, str):
+        return None if entry else "empty pattern"
+    if not isinstance(entry, dict):
+        return "must be a glob string or an object"
+    if "all" in entry:
+        parts = entry["all"]
+        if not allow_all or set(entry) != {"all"}:
+            return "'all' cannot be nested or combined with other keys"
+        if not isinstance(parts, list) or not parts:
+            return "'all' must be a non-empty list"
+        for part in parts:
+            problem = _detect_entry_problem(part, allow_all=False)
+            if problem:
+                return problem
+        return None
+    unknown = set(entry) - {"file", "contains"}
+    if unknown:
+        return f"unknown key(s): {', '.join(sorted(unknown))}"
+    if not isinstance(entry.get("file"), str) or not entry["file"]:
+        return "'file' must be a non-empty glob"
+    if "contains" in entry and (not isinstance(entry["contains"], str) or not entry["contains"]):
+        return "'contains' must be a non-empty string"
+    return None
+
+
 def validate_profile_folder(folder: Path) -> list:
     """Validate profile.json and practices.md for one stack folder; return error strings."""
     errors = []
@@ -65,8 +92,14 @@ def validate_profile_folder(folder: Path) -> list:
             errors.append(f"{folder.name}: stack '{stack}' does not match folder name")
 
     detect = data.get("detect")
-    if detect is not None and (not isinstance(detect, list) or not detect or not all(isinstance(x, str) and x for x in detect)):
-        errors.append(f"{folder.name}: 'detect' must be a non-empty list of patterns")
+    if detect is not None:
+        if not isinstance(detect, list) or not detect:
+            errors.append(f"{folder.name}: 'detect' must be a non-empty list of entries")
+        else:
+            for entry in detect:
+                problem = _detect_entry_problem(entry, allow_all=True)
+                if problem:
+                    errors.append(f"{folder.name}: 'detect' entry {entry!r}: {problem}")
 
     commands = data.get("commands")
     if commands is not None:

@@ -299,6 +299,7 @@ def run(project: Path, profile_names: list, ctx: dict, dry: bool, *, full: bool,
         report.append(f"! {len(hook_skips)} hook(s) modified locally were NOT updated: {', '.join(hook_skips)} "
                       "(see the diff with --dry-run; --force-hooks overwrites them)")
 
+    created_ignore = []
     # 5. .gitignore (shared mode) or .git/info/exclude (local mode)
     if is_local:
         exclude_paths = [
@@ -310,6 +311,8 @@ def run(project: Path, profile_names: list, ctx: dict, dry: bool, *, full: bool,
             exclude_paths.append(".mcp.json")
         ignore_target, ignore_added = ".git/info/exclude", update_git_exclude(project, exclude_paths, dry, report)
     else:
+        if not (project / ".gitignore").exists():
+            created_ignore.append(".gitignore")
         ignore_target, ignore_added = ".gitignore", update_gitignore(project, dry, report)
 
     # 6. kit.json (metadata, formatting rules, hashes, and what the kit added: needed by `uninstall`)
@@ -321,9 +324,12 @@ def run(project: Path, profile_names: list, ctx: dict, dry: bool, *, full: bool,
     recorded_ignore = json.loads(json.dumps(previous.get("added_ignore", {})))
     bucket = recorded_ignore.setdefault(ignore_target, [])
     bucket.extend(line for line in ignore_added if line not in bucket)
+    created = list(dict.fromkeys([*previous.get("created_files", []), *created_ignore]))
+    extra = {"added_permissions": recorded_perms, "added_ignore": recorded_ignore}
+    if created:
+        extra["created_files"] = created  # files that did not exist before the kit (uninstall may delete them if left empty)
     write_kit_json(project, profiles, previous, managed, rendered_state, decisions, effective, dry, report, ctx,
-                   local=is_local, full=full,
-                   extra={"added_permissions": recorded_perms, "added_ignore": recorded_ignore})
+                   local=is_local, full=full, extra=extra)
     return report
 
 

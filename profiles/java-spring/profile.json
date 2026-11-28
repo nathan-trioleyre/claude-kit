@@ -2,9 +2,18 @@
   "stack": "java-spring",
   "display_name": "Java / Spring Boot",
   "detect": [
-    "pom.xml",
-    "build.gradle",
-    "build.gradle.kts"
+    {
+      "file": "pom.xml",
+      "contains": "spring-boot"
+    },
+    {
+      "file": "build.gradle*",
+      "contains": "spring-boot"
+    },
+    {
+      "file": "build.gradle*",
+      "contains": "org.springframework.boot"
+    }
   ],
   "paths": [],
   "commands": {
@@ -231,7 +240,8 @@
     "https://github.com/diffplug/spotless/tree/main/plugin-maven",
     "https://maven.apache.org/guides/introduction/introduction-to-the-lifecycle.html",
     "https://docs.gradle.org/current/userguide/gradle_wrapper.html",
-    "https://checkstyle.org/index.html"
+    "https://checkstyle.org/index.html",
+    "https://docs.spring.io/spring-boot/reference/features/external-config.html"
   ],
   "last_verified": "2026-11-28"
 }

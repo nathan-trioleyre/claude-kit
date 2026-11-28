@@ -847,6 +847,62 @@ class TestEngineHardening(unittest.TestCase):
             self.assertEqual(settings["hooks"], {"Stop": [{"hooks": [{"type": "command", "command": "echo mine"}]}]})
             self.assertEqual((proj / ".gitignore").read_bytes(), b"node_modules\r\n")
 
+    def test_uninstall_deletes_created_gitignore_backups_and_empty_dirs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, apply_bin, proj = self._kit_and_project(tmp)
+            (proj / ".claude").mkdir()
+            (proj / ".claude" / "settings.json").write_text(json.dumps({"permissions": {"allow": ["Bash(make *)"]}}), encoding="utf-8")
+            self.assertFalse((proj / ".gitignore").exists())
+            self._apply(apply_bin, proj)
+            self.assertIn(".gitignore", json.loads((proj / ".claude" / "kit.json").read_text(encoding="utf-8"))["created_files"])
+            self.assertTrue((proj / ".claude" / "settings.json.bak").exists())
+            (proj / ".claude" / "keepme").mkdir()
+            (proj / ".claude" / "keepme" / "note.txt").write_text("mine", encoding="utf-8")
+            out = run_apply(apply_bin, "uninstall", "--project", str(proj)).stdout
+            self.assertIn("removed   .gitignore", out)
+            self.assertFalse((proj / ".gitignore").exists())
+            self.assertFalse((proj / ".claude" / "settings.json.bak").exists())
+            self.assertFalse((proj / ".claude" / "hooks").exists())
+            self.assertTrue((proj / ".claude" / "keepme" / "note.txt").exists())
+            self.assertTrue((proj / ".claude" / "settings.json").exists())
+
+    def test_uninstall_keeps_preexisting_empty_gitignore_and_nonempty_created_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, apply_bin, proj = self._kit_and_project(tmp)
+            (proj / ".gitignore").write_text("", encoding="utf-8")  # existed before the kit
+            self._apply(apply_bin, proj)
+            run_apply(apply_bin, "uninstall", "--project", str(proj))
+            self.assertTrue((proj / ".gitignore").exists())
+        with tempfile.TemporaryDirectory() as tmp:
+            _, apply_bin, proj = self._kit_and_project(tmp)
+            self._apply(apply_bin, proj)
+            with open(proj / ".gitignore", "a", encoding="utf-8") as fh:
+                fh.write("\ndist/\n")
+            run_apply(apply_bin, "uninstall", "--project", str(proj))
+            self.assertIn("dist/", (proj / ".gitignore").read_text(encoding="utf-8"))
+
+    def test_ask_permissions_merge_additively_and_uninstall_removes_them(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, apply_bin, proj = self._kit_and_project(tmp)
+            (proj / ".claude").mkdir()
+            (proj / ".claude" / "settings.json").write_text(json.dumps({"permissions": {"ask": ["Bash(mine *)"]}}), encoding="utf-8")
+            self._apply(apply_bin, proj)
+            settings = json.loads((proj / ".claude" / "settings.json").read_text(encoding="utf-8"))
+            self.assertEqual(settings["permissions"]["ask"], ["Bash(mine *)", "Bash(rm -rf *)", "Bash(rm -fr *)"])
+            self.assertNotIn("Bash(rm -rf *)", settings["permissions"]["deny"])
+            run_apply(apply_bin, "uninstall", "--project", str(proj))
+            settings = json.loads((proj / ".claude" / "settings.json").read_text(encoding="utf-8"))
+            self.assertEqual(settings["permissions"]["ask"], ["Bash(mine *)"])
+
+    def test_preflight_rejects_bad_ask_shape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, apply_bin, proj = self._kit_and_project(tmp)
+            (proj / ".claude").mkdir()
+            (proj / ".claude" / "settings.json").write_text(json.dumps({"permissions": {"ask": "nope"}}), encoding="utf-8")
+            res = run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python", check=False)
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("permissions.ask", res.stdout + res.stderr)
+
     def test_uninstall_local_mode_removes_exclude_block_and_settings_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             _, apply_bin, proj = self._kit_and_project(tmp)
@@ -863,6 +919,69 @@ class TestEngineHardening(unittest.TestCase):
             self.assertFalse((proj / ".claude" / "hooks").exists())
             res = run_apply(apply_bin, "uninstall", "--project", str(proj), check=False)
             self.assertNotEqual(res.returncode, 0)  # nothing left to uninstall
+
+
+class TestDetectContent(unittest.TestCase):
+    """Content-aware detection against the real starter profiles."""
+
+    def _detect(self, files: dict) -> list:
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = Path(tmp)
+            for rel, text in files.items():
+                f = proj / rel
+                f.parent.mkdir(parents=True, exist_ok=True)
+                f.write_text(text, encoding="utf-8")
+            out = run_apply(APPLY, "detect", "--project", str(proj)).stdout
+            return json.loads(out)["matched"]
+
+    def test_java_spring_needs_spring_boot(self):
+        self.assertEqual(self._detect({"pom.xml": "<project><artifactId>demo</artifactId></project>"}), [])
+        self.assertEqual(self._detect({"build.gradle": "apply plugin: 'java'"}), [])
+        self.assertEqual(self._detect({"pom.xml": "<artifactId>spring-boot-starter-web</artifactId>"}), ["java-spring"])
+        self.assertEqual(self._detect({"build.gradle.kts": 'id("org.springframework.boot") version "3.3.0"'}), ["java-spring"])
+
+    def test_react_vite_needs_vite_config_and_react(self):
+        pkg = '{"dependencies": {"react": "^18.0.0"}}'
+        self.assertEqual(self._detect({"package.json": pkg, "vite.config.ts": "", "src/main.tsx": ""}), ["react-vite"])
+        self.assertNotIn("react-vite", self._detect({"package.json": pkg, "src/main.tsx": "", "tsconfig.json": "{}"}))
+        self.assertNotIn("react-vite", self._detect({"package.json": '{"dependencies": {}}', "vite.config.ts": ""}))
+
+    def test_all_requires_same_directory(self):
+        pkg = '{"dependencies": {"react": "^18.0.0"}}'
+        self.assertNotIn("react-vite", self._detect({"web/package.json": pkg, "other/vite.config.ts": ""}))
+        self.assertEqual(self._detect({"web/package.json": pkg, "web/vite.config.ts": ""}), ["react-vite"])
+
+    def test_vue_needs_vue_dependency(self):
+        self.assertEqual(self._detect({"package.json": '{"dependencies": {"vue": "^3.4.0"}}', "tsconfig.json": "{}"}), ["vue"])
+        self.assertEqual(self._detect({"src/App.vue": "<template/>"}), [])
+
+    def test_nextjs_and_plain_typescript(self):
+        nxt = {"package.json": '{"dependencies": {"react": "1", "next": "14"}}', "next.config.js": "", "tsconfig.json": "{}",
+               "vite.config.ts": ""}
+        self.assertEqual(self._detect(nxt), ["nextjs"])
+        self.assertEqual(self._detect({"package.json": '{"name": "lib"}', "tsconfig.json": "{}"}), ["typescript"])
+
+    def test_content_read_survives_undecodable_bytes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = Path(tmp)
+            (proj / "pom.xml").write_bytes(b"\xff\xfe<artifactId>spring-boot-starter</artifactId>")
+            out = run_apply(APPLY, "detect", "--project", str(proj)).stdout
+            self.assertEqual(json.loads(out)["matched"], ["java-spring"])
+
+    def test_validate_rejects_bad_detect_entries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            kit = t / "kit"
+            copy_kit(kit)
+            bad = [{"file": "a", "bogus": 1}, {"all": []}, {"all": [{"all": ["x"]}]}, {"file": "a", "contains": ""}, 3]
+            for entry in bad:
+                make_profile(kit, "python", detect=[entry])
+                res = run_apply(kit / "skills" / "claude-kit" / "scripts" / "apply.py", "validate", check=False)
+                self.assertNotEqual(res.returncode, 0, entry)
+                self.assertIn("'detect' entry", res.stdout + res.stderr)
+            make_profile(kit, "python", detect=["x", {"file": "a", "contains": "b"}, {"all": ["y", {"file": "a"}]}])
+            res = run_apply(kit / "skills" / "claude-kit" / "scripts" / "apply.py", "validate", check=False)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
 
 
 if __name__ == "__main__":

@@ -2,7 +2,10 @@
   "stack": "vue",
   "display_name": "Vue 3 + Vite (TypeScript)",
   "detect": [
-    "*.vue"
+    {
+      "file": "package.json",
+      "contains": "\"vue\":"
+    }
   ],
   "supersedes": [
     "typescript"

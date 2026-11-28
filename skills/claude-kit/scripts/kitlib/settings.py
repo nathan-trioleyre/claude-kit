@@ -35,7 +35,7 @@ def validate_settings_shape(data, label: str) -> None:
     perms = data.get("permissions")
     if "permissions" in data and not isinstance(perms, dict):
         bad("'permissions' must be an object")
-    for key in ("allow", "deny"):
+    for key in ("allow", "deny", "ask"):
         rules = (perms or {}).get(key)
         if key in (perms or {}) and (not isinstance(rules, list) or not all(isinstance(r, str) for r in rules)):
             bad(f"'permissions.{key}' must be a list of strings")
@@ -62,7 +62,9 @@ def merge_settings(existing: dict, wanted: dict):
     result = json.loads(json.dumps(existing))
     changes = []
     perms = result.setdefault("permissions", {})
-    for key in ("allow", "deny"):
+    for key in ("allow", "deny", "ask"):
+        if key == "ask" and not wanted.get("permissions", {}).get("ask"):
+            continue  # do not add an empty 'ask' to a user's file
         current = perms.setdefault(key, [])
         for rule in wanted.get("permissions", {}).get(key, []):
             if rule not in current:
@@ -124,7 +126,8 @@ def build_wanted_settings(profiles: list, use_org: bool = True) -> dict:
     deny = wanted["permissions"]["deny"]
     if use_org:
         org = load_org_settings()
-        for key, target in (("allow", allow), ("deny", deny)):
+        ask = wanted["permissions"].setdefault("ask", [])
+        for key, target in (("allow", allow), ("deny", deny), ("ask", ask)):
             for rule in org.get("permissions", {}).get(key, []):
                 if rule not in target:
                     target.append(rule)
@@ -144,11 +147,11 @@ def read_org_text(name: str) -> str:
 
 def apply_settings(project: Path, profiles: list, dry: bool, report: list, use_org: bool,
                    local: bool = False) -> dict:
-    """Create or merge settings(.local).json. Returns the permission rules the kit added ({allow, deny})."""
+    """Create or merge settings(.local).json. Returns the permission rules the kit added ({allow, deny, ask})."""
     rel_name = ".claude/settings.local.json" if local else ".claude/settings.json"
     settings_path = project / rel_name
     wanted = build_wanted_settings(profiles, use_org)
-    added = {"allow": [], "deny": []}
+    added = {"allow": [], "deny": [], "ask": []}
     if settings_path.exists():
         existing = read_settings(settings_path, rel_name)
         merged, changes = merge_settings(existing, wanted)

@@ -2,8 +2,15 @@
   "stack": "react-vite",
   "display_name": "React + Vite (TypeScript)",
   "detect": [
-    "main.tsx",
-    "main.jsx"
+    {
+      "all": [
+        "vite.config.*",
+        {
+          "file": "package.json",
+          "contains": "\"react\":"
+        }
+      ]
+    }
   ],
   "supersedes": [
     "typescript"

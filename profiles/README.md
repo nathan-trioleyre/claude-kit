@@ -3,7 +3,7 @@
 One folder per stack (`python/`, `csharp-dotnet/`, `angular/`, …), created by `/claude-kit` the first time it encounters a stack, then reused across subsequent projects.
 
 Each profile contains:
-- `profile.json`: machine-readable metadata (detection globs, commands, permissions, format rules, optional `paths` for `.claude/rules/<stack>.md`, optional `supersedes`, optional `tooling` conflict detection, sources, `last_verified` date).
+- `profile.json`: machine-readable metadata (detection entries, commands, permissions, format rules, optional `paths` for `.claude/rules/<stack>.md`, optional `supersedes`, optional `tooling` conflict detection, sources, `last_verified` date).
 - `practices.md`: summary of **timeless** stack best practices (max 15 lines; copied into `CLAUDE.md` or `.claude/rules/<stack>.md` when paths are defined).
 - `versions/<ver>.md` *(optional)*: rules specific to a major version (max 8 lines, e.g., `versions/11.md`, `versions/21.md`), created on demand and injected automatically when `stack_versions` matches.
 
@@ -12,6 +12,15 @@ Rules:
 - Every profile cites its sources (official documentation preferred).
 - A profile older than 90 days is flagged as stale: `/claude-kit-refresh <stack>`.
 - Copy `_TEMPLATE/` to author one by hand.
+
+## `detect`: how a profile is matched
+
+`detect` is a non-empty list; the profile matches when ANY entry hits. An entry is one of:
+- `"pom.xml"` or `"*.vue"`: a glob (matched against the file name, or the relative path when it contains `/`).
+- `{"file": "package.json", "contains": "\"react\":"}`: the file must also contain the text (case-insensitive, first 200 KB, undecodable bytes ignored). Same rules as tooling `markers`.
+- `{"all": ["vite.config.*", {"file": "package.json", "contains": "\"react\":"}]}`: every part (a glob or a `{file, contains}`) must hit in the SAME directory, so one monorepo package is not mixed with another's files. `all` cannot be nested.
+
+Prefer content-aware entries over bare globs when a file name is shared by many stacks (`pom.xml`, `package.json`), and use `supersedes` when a more specific profile should replace a generic one.
 
 ## `tooling` (optional): coexisting with existing project tools & presets
 

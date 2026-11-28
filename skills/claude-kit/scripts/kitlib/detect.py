@@ -7,7 +7,7 @@ import json
 import os
 from pathlib import Path
 
-from .core import IGNORED_DIRS, load_profile, MAX_DETECT_DEPTH, profile_dirs
+from .core import IGNORED_DIRS, load_profile, MAX_DETECT_DEPTH, MAX_MARKER_BYTES, profile_dirs
 
 
 def collect_project_files(project: Path, max_depth: int = MAX_DETECT_DEPTH) -> list:
@@ -37,6 +37,35 @@ def pattern_matches(rel_files: list, pattern: str) -> bool:
     return any(file_matches(rp, pattern) for rp in rel_files)
 
 
+def entry_hits(project: Path, rel_files: list, entry) -> list:
+    """Files satisfying one `detect` entry.
+
+    entry is a glob string, `{"file": glob, "contains": text}` (marker_evidence rules: case-insensitive,
+    first MAX_MARKER_BYTES, undecodable bytes replaced), or `{"all": [entry, ...]}`: every sub-entry
+    must hit inside the SAME directory (so a monorepo package is not mixed with another's files).
+    """
+    if isinstance(entry, str):
+        return [rp for rp in rel_files if file_matches(rp, entry)]
+    if "all" in entry:
+        per_part = [entry_hits(project, rel_files, part) for part in entry["all"]]
+        dir_of = lambda rp: rp.rsplit("/", 1)[0] if "/" in rp else "."
+        common = set.intersection(*(({dir_of(rp) for rp in hits}) for hits in per_part)) if per_part else set()
+        return sorted({rp for hits in per_part for rp in hits if dir_of(rp) in common})
+    needle = entry.get("contains")
+    matched = [rp for rp in rel_files if file_matches(rp, entry["file"])]
+    if not needle:
+        return matched
+    found = []
+    for rp in matched:
+        try:
+            text = (project / rp).read_text(encoding="utf-8", errors="replace")[:MAX_MARKER_BYTES]
+        except OSError:
+            continue
+        if needle.lower() in text.lower():
+            found.append(rp)
+    return found
+
+
 def detect_details(project: Path) -> dict:
     """Return {stack: {"dirs": [...], "rule_paths": [...]}} for matched profiles, honoring supersedes."""
     rel_files = collect_project_files(project)
@@ -44,7 +73,7 @@ def detect_details(project: Path) -> dict:
     raw_matches = {}
     superseded = set()
     for p in loaded:
-        hits = [rp for rp in rel_files if any(file_matches(rp, pat) for pat in p.get("detect", []))]
+        hits = sorted({rp for entry in p.get("detect", []) for rp in entry_hits(project, rel_files, entry)})
         if hits:
             dirs = sorted({rp.rsplit("/", 1)[0] if "/" in rp else "." for rp in hits})
             rule_paths = ["**/*" if d == "." else f"{d}/**" for d in dirs]

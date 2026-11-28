@@ -1,7 +1,7 @@
 {
   "stack": "stack-name",
   "display_name": "Readable name (e.g., Python 3.12 + uv)",
-  "detect": ["hint-file.toml", "*.hint-ext"],
+  "detect": ["hint-file.toml", "*.hint-ext", {"file": "manifest.json", "contains": "framework-name"}, {"all": ["config.*", {"file": "manifest.json", "contains": "framework-name"}]}],
   "paths": [],
   "commands": {
     "install": "command or null",

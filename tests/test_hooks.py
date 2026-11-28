@@ -41,6 +41,12 @@ class TestBaseSettings(unittest.TestCase):
             self.assertNotIn(unix_read_cmd, allow)
 
         self.assertIn("Read(**/.env)", deny)
+        ask = data["permissions"]["ask"]
+        for rule in ("Bash(rm -rf *)", "Bash(rm -fr *)"):
+            self.assertIn(rule, ask)
+            self.assertNotIn(rule, deny)  # deny cannot be overridden and blocks routine cleanup (rm -rf dist)
+        for rule in ("Bash(sudo *)", "Bash(git push --force*)", "Bash(git reset --hard*)"):
+            self.assertIn(rule, deny)
         self.assertIn("Read(**/.env.local)", deny)
         self.assertIn("Read(**/*.pem)", deny)
         self.assertIn("Read(**/*.key)", deny)
