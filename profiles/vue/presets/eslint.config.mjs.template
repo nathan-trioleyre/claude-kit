@@ -1,0 +1,31 @@
+// @ts-check
+import js from '@eslint/js';
+import { defineConfig, globalIgnores } from 'eslint/config';
+import globals from 'globals';
+import pluginVue from 'eslint-plugin-vue';
+import tseslint from 'typescript-eslint';
+
+export default defineConfig(
+  globalIgnores(['dist/**', 'coverage/**', 'node_modules/**', '**/*.d.ts']),
+  {
+    files: ['**/*.{ts,vue}'],
+    extends: [
+      js.configs.recommended,
+      ...tseslint.configs.recommended,
+      ...pluginVue.configs['flat/recommended'],
+    ],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: globals.browser,
+      parserOptions: { parser: tseslint.parser },
+    },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      complexity: ['warn', 12],
+      'max-depth': ['warn', 4],
+      'no-eval': 'error',
+    },
+  },
+);

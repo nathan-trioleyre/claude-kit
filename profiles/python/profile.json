@@ -1,6 +1,6 @@
 {
   "stack": "python",
-  "display_name": "Python (uv + ruff + pytest)",
+  "display_name": "Python",
   "detect": [
     "pyproject.toml",
     "requirements*.txt",
@@ -10,39 +10,42 @@
   "commands": {
     "install": "uv sync",
     "dev": null,
-    "test": "uv run pytest",
-    "test_related": "uv run pytest <file>",
-    "lint": "uv run ruff check .",
-    "format": "uv run ruff format .",
+    "test": "{run} pytest",
+    "test_related": "{run} pytest <file>",
+    "lint": "{run} ruff check .",
+    "format": "{run} ruff format .",
     "hygiene": "uvx deptry . && uvx vulture . --min-confidence 80",
     "audit": "uvx pip-audit",
     "build": "uv build",
-    "verify": "uv run ruff check . && uv run pytest"
+    "verify": "{run} ruff check . && {run} mypy . && {run} pytest"
   },
   "verify_steps": [
     {
-      "cmd": "uv run ruff check .",
+      "cmd": "{run} ruff check .",
       "concern": "linter",
       "command_key": "lint"
     },
     {
-      "cmd": "uv run mypy .",
+      "cmd": "{run} mypy .",
       "concern": "typechecker"
     },
     {
-      "cmd": "uv run pytest",
+      "cmd": "{run} pytest",
       "concern": "package-manager",
       "command_key": "test"
     }
   ],
   "permissions_allow": [
     "Bash(uv sync*)",
-    "Bash(uv run pytest*)",
-    "Bash(uv run ruff*)",
-    "Bash(uv run mypy*)",
+    "Bash({run} pytest*)",
+    "Bash({run} ruff*)",
+    "Bash({run} mypy*)",
     "Bash(pytest*)",
     "Bash(ruff*)",
-    "Bash(mypy*)"
+    "Bash(mypy*)",
+    "Bash(uvx deptry*)",
+    "Bash(uvx vulture*)",
+    "Bash(uvx pip-audit*)"
   ],
   "format_rules": [
     {
@@ -88,8 +91,12 @@
           }
         ],
         "install_packages": {
-          "uv": ["ruff"],
-          "poetry": ["ruff"]
+          "uv": [
+            "ruff"
+          ],
+          "poetry": [
+            "ruff"
+          ]
         }
       },
       "alternatives": [
@@ -109,7 +116,7 @@
             "black"
           ],
           "commands": {
-            "format": "black ."
+            "format": "{run} black ."
           },
           "format_rule": {
             "extensions": [
@@ -119,7 +126,11 @@
               "black",
               "{file}"
             ]
-          }
+          },
+          "permissions_allow": [
+            "Bash({run} black*)",
+            "Bash(black*)"
+          ]
         },
         {
           "name": "yapf",
@@ -134,6 +145,23 @@
           ],
           "hooks": [
             "yapf"
+          ],
+          "commands": {
+            "format": "{run} yapf -ir ."
+          },
+          "format_rule": {
+            "extensions": [
+              ".py"
+            ],
+            "command": [
+              "yapf",
+              "-i",
+              "{file}"
+            ]
+          },
+          "permissions_allow": [
+            "Bash({run} yapf*)",
+            "Bash(yapf*)"
           ]
         }
       ]
@@ -171,8 +199,12 @@
           }
         ],
         "install_packages": {
-          "uv": ["ruff"],
-          "poetry": ["ruff"]
+          "uv": [
+            "ruff"
+          ],
+          "poetry": [
+            "ruff"
+          ]
         },
         "post_edit_check": {
           "extensions": [
@@ -206,9 +238,10 @@
             "flake8"
           ],
           "commands": {
-            "lint": "flake8"
+            "lint": "{run} flake8 ."
           },
           "permissions_allow": [
+            "Bash({run} flake8*)",
             "Bash(flake8*)"
           ]
         },
@@ -230,8 +263,12 @@
             "pylint"
           ],
           "permissions_allow": [
+            "Bash({run} pylint*)",
             "Bash(pylint*)"
-          ]
+          ],
+          "commands": {
+            "lint": "{run} pylint --recursive=y ."
+          }
         }
       ]
     },
@@ -260,13 +297,14 @@
         ],
         "permissions": [
           "Bash(uv sync*)",
-          "Bash(uv run pytest*)",
-          "Bash(uv run ruff*)",
-          "Bash(uv run mypy*)"
+          "Bash({run} pytest*)",
+          "Bash({run} ruff*)",
+          "Bash({run} mypy*)"
         ],
         "practice_terms": [
           "uv"
-        ]
+        ],
+        "runner": "uv run"
       },
       "alternatives": [
         {
@@ -285,20 +323,22 @@
           ],
           "commands": {
             "install": "poetry install",
-            "test": "poetry run pytest",
-            "test_related": "poetry run pytest <file>",
-            "lint": "poetry run ruff check .",
-            "format": "poetry run ruff format .",
-            "build": "poetry build",
-            "verify": "poetry run ruff check . && poetry run pytest"
+            "test": "{run} pytest",
+            "test_related": "{run} pytest <file>",
+            "lint": "{run} ruff check .",
+            "format": "{run} ruff format .",
+            "build": "poetry build"
           },
           "permissions_allow": [
             "Bash(poetry install*)",
-            "Bash(poetry run pytest*)",
-            "Bash(poetry run ruff*)",
-            "Bash(poetry run mypy*)",
+            "Bash({run} pytest*)",
+            "Bash({run} ruff*)",
+            "Bash({run} mypy*)",
+            "Bash({run} black*)",
+            "Bash({run} flake8*)",
             "Bash(poetry build*)"
-          ]
+          ],
+          "runner": "poetry run"
         },
         {
           "name": "pdm",
@@ -313,7 +353,23 @@
           ],
           "hooks": [
             "pdm"
-          ]
+          ],
+          "commands": {
+            "install": "pdm install",
+            "test": "{run} pytest",
+            "test_related": "{run} pytest <file>",
+            "lint": "{run} ruff check .",
+            "format": "{run} ruff format .",
+            "build": "pdm build"
+          },
+          "permissions_allow": [
+            "Bash(pdm install*)",
+            "Bash({run} pytest*)",
+            "Bash({run} ruff*)",
+            "Bash({run} mypy*)",
+            "Bash(pdm build*)"
+          ],
+          "runner": "pdm run"
         },
         {
           "name": "pipenv",
@@ -327,7 +383,21 @@
           ],
           "hooks": [
             "pipenv"
-          ]
+          ],
+          "commands": {
+            "install": "pipenv install --dev",
+            "test": "{run} pytest",
+            "test_related": "{run} pytest <file>",
+            "lint": "{run} ruff check .",
+            "format": "{run} ruff format ."
+          },
+          "permissions_allow": [
+            "Bash(pipenv install*)",
+            "Bash({run} pytest*)",
+            "Bash({run} ruff*)",
+            "Bash({run} mypy*)"
+          ],
+          "runner": "pipenv run"
         }
       ]
     },
@@ -349,7 +419,7 @@
         ],
         "commands": [],
         "permissions": [
-          "Bash(uv run mypy*)",
+          "Bash({run} mypy*)",
           "Bash(mypy*)"
         ],
         "only_when_installed": true,
@@ -361,8 +431,12 @@
           }
         ],
         "install_packages": {
-          "uv": ["mypy"],
-          "poetry": ["mypy"]
+          "uv": [
+            "mypy"
+          ],
+          "poetry": [
+            "mypy"
+          ]
         }
       },
       "alternatives": [
@@ -381,7 +455,7 @@
             "pyright"
           ],
           "permissions_allow": [
-            "Bash(uv run pyright*)",
+            "Bash({run} pyright*)",
             "Bash(pyright*)"
           ]
         }

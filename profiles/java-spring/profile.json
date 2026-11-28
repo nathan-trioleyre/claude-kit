@@ -1,0 +1,237 @@
+{
+  "stack": "java-spring",
+  "display_name": "Java / Spring Boot",
+  "detect": [
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts"
+  ],
+  "paths": [],
+  "commands": {
+    "install": "./mvnw -B dependency:resolve",
+    "dev": "./mvnw spring-boot:run",
+    "test": "./mvnw test",
+    "test_related": "./mvnw test -Dtest=<TestClass>",
+    "lint": "./mvnw checkstyle:check",
+    "format": "./mvnw spotless:apply",
+    "hygiene": null,
+    "audit": null,
+    "build": "./mvnw package",
+    "verify": "./mvnw checkstyle:check && ./mvnw test"
+  },
+  "verify_steps": [
+    {
+      "cmd": "./mvnw checkstyle:check",
+      "concern": "linter",
+      "command_key": "lint"
+    },
+    {
+      "cmd": "./mvnw test",
+      "concern": "package-manager",
+      "command_key": "test"
+    }
+  ],
+  "permissions_allow": [
+    "Bash(./mvnw test*)",
+    "Bash(./mvnw verify*)",
+    "Bash(./mvnw package*)",
+    "Bash(./mvnw spotless:*)",
+    "Bash(./mvnw checkstyle:*)",
+    "Bash(./mvnw dependency:resolve*)",
+    "Bash(./gradlew test*)",
+    "Bash(./gradlew check*)",
+    "Bash(./gradlew build*)",
+    "Bash(./gradlew spotless*)",
+    "Bash(./gradlew checkstyle*)"
+  ],
+  "format_rules": [],
+  "tooling": [
+    {
+      "concern": "formatter",
+      "kit": {
+        "name": "spotless (google-java-format)",
+        "markers": [
+          {
+            "file": "pom.xml",
+            "contains": "spotless-maven-plugin"
+          },
+          {
+            "file": "build.gradle*",
+            "contains": "com.diffplug.spotless"
+          }
+        ],
+        "commands": [
+          "format"
+        ],
+        "permissions": [
+          "Bash(./mvnw spotless:*)",
+          "Bash(./gradlew spotless*)"
+        ],
+        "practice_terms": [
+          "spotless"
+        ],
+        "only_when_installed": true
+      },
+      "alternatives": [
+        {
+          "name": "fmt-maven-plugin",
+          "markers": [
+            {
+              "file": "pom.xml",
+              "contains": "fmt-maven-plugin"
+            }
+          ],
+          "hooks": [
+            "fmt-maven-plugin"
+          ],
+          "commands": {
+            "format": "./mvnw com.spotify.fmt:fmt-maven-plugin:format"
+          }
+        }
+      ]
+    },
+    {
+      "concern": "linter",
+      "kit": {
+        "name": "checkstyle",
+        "markers": [
+          {
+            "file": "pom.xml",
+            "contains": "maven-checkstyle-plugin"
+          },
+          {
+            "file": "build.gradle*",
+            "contains": "checkstyle"
+          },
+          {
+            "file": "checkstyle.xml"
+          }
+        ],
+        "commands": [
+          "lint"
+        ],
+        "permissions": [
+          "Bash(./mvnw checkstyle:*)",
+          "Bash(./gradlew checkstyle*)"
+        ],
+        "practice_terms": [
+          "checkstyle"
+        ],
+        "only_when_installed": true
+      },
+      "alternatives": [
+        {
+          "name": "pmd",
+          "markers": [
+            {
+              "file": "pom.xml",
+              "contains": "maven-pmd-plugin"
+            },
+            {
+              "file": "build.gradle*",
+              "contains": "pmd"
+            }
+          ],
+          "hooks": [
+            "pmd"
+          ]
+        },
+        {
+          "name": "spotbugs",
+          "markers": [
+            {
+              "file": "pom.xml",
+              "contains": "spotbugs"
+            },
+            {
+              "file": "build.gradle*",
+              "contains": "spotbugs"
+            }
+          ],
+          "hooks": [
+            "spotbugs"
+          ]
+        }
+      ]
+    },
+    {
+      "concern": "package-manager",
+      "kit": {
+        "name": "maven wrapper",
+        "markers": [
+          {
+            "file": "pom.xml"
+          },
+          {
+            "file": "mvnw"
+          }
+        ],
+        "commands": [
+          "install",
+          "dev",
+          "test",
+          "test_related",
+          "lint",
+          "format",
+          "build",
+          "verify"
+        ],
+        "permissions": [
+          "Bash(./mvnw test*)",
+          "Bash(./mvnw verify*)",
+          "Bash(./mvnw package*)",
+          "Bash(./mvnw dependency:resolve*)"
+        ],
+        "practice_terms": [
+          "mvnw"
+        ]
+      },
+      "alternatives": [
+        {
+          "name": "gradle wrapper",
+          "markers": [
+            {
+              "file": "gradlew"
+            },
+            {
+              "file": "build.gradle"
+            },
+            {
+              "file": "build.gradle.kts"
+            }
+          ],
+          "hooks": [
+            "gradlew",
+            "gradle"
+          ],
+          "commands": {
+            "install": "./gradlew assemble",
+            "dev": "./gradlew bootRun",
+            "test": "./gradlew test",
+            "test_related": "./gradlew test --tests <TestClass>",
+            "build": "./gradlew build",
+            "lint": "./gradlew checkstyleMain checkstyleTest",
+            "format": "./gradlew spotlessApply",
+            "verify": "./gradlew check"
+          },
+          "permissions_allow": [
+            "Bash(./gradlew test*)",
+            "Bash(./gradlew check*)",
+            "Bash(./gradlew build*)",
+            "Bash(./gradlew spotless*)",
+            "Bash(./gradlew checkstyle*)"
+          ]
+        }
+      ]
+    }
+  ],
+  "sources": [
+    "https://docs.spring.io/spring-boot/reference/using/structuring-your-code.html",
+    "https://docs.spring.io/spring-boot/reference/testing/spring-boot-applications.html",
+    "https://github.com/diffplug/spotless/tree/main/plugin-maven",
+    "https://maven.apache.org/guides/introduction/introduction-to-the-lifecycle.html",
+    "https://docs.gradle.org/current/userguide/gradle_wrapper.html",
+    "https://checkstyle.org/index.html"
+  ],
+  "last_verified": "2026-11-28"
+}

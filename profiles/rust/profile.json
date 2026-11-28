@@ -8,14 +8,14 @@
   "commands": {
     "install": "cargo fetch",
     "dev": "cargo run",
-    "test": "cargo test",
+    "test": "cargo test --workspace",
     "test_related": "cargo test <test_name>",
-    "lint": "cargo clippy --all-targets -- -D warnings",
+    "lint": "cargo clippy --workspace --all-targets -- -D warnings",
     "format": "cargo fmt",
     "hygiene": "cargo machete",
     "audit": "cargo audit",
-    "build": "cargo build",
-    "verify": "cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test"
+    "build": "cargo build --workspace",
+    "verify": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace"
   },
   "permissions_allow": [
     "Bash(cargo check*)",
@@ -24,7 +24,9 @@
     "Bash(cargo fmt*)",
     "Bash(cargo build*)",
     "Bash(cargo audit*)",
-    "Bash(cargo machete*)"
+    "Bash(cargo machete*)",
+    "Bash(cargo run*)",
+    "Bash(cargo doc*)"
   ],
   "format_rules": [
     {

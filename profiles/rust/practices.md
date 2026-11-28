@@ -1,4 +1,4 @@
-- Run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test` before concluding.
+- Before concluding run fmt, clippy with `-D warnings` and tests across the whole workspace (`--workspace`).
 - Commit `Cargo.lock` for binary crates; use `cargo add` rather than editing versions by hand.
 - Propagate errors with `Result` and `?`; avoid `.unwrap()` and `.expect()` outside tests and invariants.
 - Keep `unsafe` blocks minimal, isolated, and documented with a `// SAFETY:` comment.

@@ -1,0 +1,11 @@
+- Format with `gofmt` (never hand-format).
+- Lint with `golangci-lint run` and `go vet ./...`.
+- Return errors as the last value and check them immediately; never discard one with `_`.
+- Keep the success path left-aligned: return early instead of `else` after a `return`.
+- Error strings name their origin (`"image: unknown format"`); use `panic` only for impossible states, never in library code.
+- Package names are short, lowercase, one word; no `Get` prefix on getters; one-method interfaces end in `-er`.
+- Define small interfaces where they are consumed; types implement them implicitly.
+- Share memory by communicating: use channels, bound concurrency with a fixed worker count, and always know when a goroutine ends.
+- Run `go mod tidy` after changing imports; commit both `go.mod` and `go.sum`.
+- Tests: table-driven tests in `*_test.go` next to the code; run `go test ./...`.
+- Scan dependencies with `govulncheck ./...` before releases.

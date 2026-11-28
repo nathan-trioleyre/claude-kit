@@ -1,0 +1,11 @@
+- Put the `@SpringBootApplication` class in the root package above everything else; never use the default package.
+- Group code by domain (`customer/`, `order/`), not by layer type.
+- Use constructor injection (a single constructor needs no `@Autowired`).
+- Bind typed configuration with `@ConfigurationProperties` records instead of scattered `@Value`.
+- Use the Maven/Gradle wrapper (`./mvnw`, `./gradlew`), never a global install; commit the wrapper files.
+- `./mvnw verify` runs the build plus quality checks bound to `verify` (Spotless `check`, Checkstyle); `./gradlew check` is the Gradle equivalent.
+- Format with `./mvnw spotless:apply` (or `./gradlew spotlessApply`); do not hand-reformat files.
+- Tests: JUnit 5; prefer test slices (`@WebMvcTest`, `@JsonTest`) over `@SpringBootTest`; do not combine several slices.
+- Replace beans in tests with `@MockitoBean`/`@MockitoSpyBean`; use Testcontainers for real infrastructure.
+- A `@Transactional` test with `RANDOM_PORT`/`DEFINED_PORT` does not roll back server-side work.
+- Keep secrets out of `application*.properties`; read them from the environment.

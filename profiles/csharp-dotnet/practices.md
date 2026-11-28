@@ -1,4 +1,4 @@
-- Follow the Microsoft C# coding conventions and the repo's `.editorconfig`; run `dotnet format` before finishing.
+- Follow the Microsoft C# coding conventions and the repo's `.editorconfig`.
 - Respect `global.json` and `Directory.Build.props`; do not change SDK or target framework without asking.
 - Keep nullable reference types enabled and fix warnings rather than suppressing them.
 - Use `async`/`await` end to end; never block with `.Result` or `.Wait()`; pass `CancellationToken` through.

@@ -16,7 +16,7 @@
     "format": "dotnet format",
     "audit": "dotnet list package --vulnerable --include-transitive",
     "build": "dotnet build --no-restore",
-    "verify": "dotnet build && dotnet test"
+    "verify": "dotnet format --verify-no-changes && dotnet build && dotnet test"
   },
   "permissions_allow": [
     "Bash(dotnet restore*)",
@@ -96,5 +96,20 @@
     "https://learn.microsoft.com/en-us/aspnet/core/security/app-secrets",
     "https://learn.microsoft.com/en-us/dotnet/core/extensions/logging"
   ],
-  "last_verified": "2026-11-27"
+  "last_verified": "2026-11-27",
+  "verify_steps": [
+    {
+      "cmd": "dotnet format --verify-no-changes",
+      "concern": "formatter",
+      "command_key": "lint"
+    },
+    {
+      "cmd": "dotnet build",
+      "concern": null
+    },
+    {
+      "cmd": "dotnet test",
+      "concern": null
+    }
+  ]
 }

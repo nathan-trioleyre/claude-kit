@@ -1,0 +1,9 @@
+- Commit `composer.json` and `composer.lock`; install with `composer install` (reproducible), change versions with `composer require`/`update`, never by hand.
+- Run `composer validate --strict` before committing manifest changes and `composer audit` before releases.
+- Start every file with `declare(strict_types=1);` right after `<?php` (it applies per file, to calls made from it).
+- Follow PER Coding Style (successor of PSR-12): 4-space indent, `declare` before the namespace; let Pint or PHP-CS-Fixer enforce it.
+- Use PSR-4 autoloading from `composer.json`; no `require`/`include` of classes.
+- Run PHPStan at the level configured in `phpstan.neon*` and raise it gradually; do not baseline new errors.
+- Analyse only code you wrote (`src`, `tests`), not `vendor/`.
+- Tests in `tests/`, run with `vendor/bin/phpunit` (or Pest if the project uses it); `--filter <name>` for one test.
+- Never commit `.env` or secrets; read configuration from the environment.

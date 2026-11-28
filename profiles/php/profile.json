@@ -1,0 +1,267 @@
+{
+  "stack": "php",
+  "display_name": "PHP (Composer)",
+  "detect": [
+    "composer.json"
+  ],
+  "paths": [],
+  "commands": {
+    "install": "composer install",
+    "dev": null,
+    "test": "vendor/bin/phpunit",
+    "test_related": "vendor/bin/phpunit --filter <TestName>",
+    "lint": "vendor/bin/phpstan analyse",
+    "format": "vendor/bin/pint",
+    "hygiene": "composer validate --strict",
+    "audit": "composer audit",
+    "build": null,
+    "verify": "vendor/bin/pint --test && vendor/bin/phpstan analyse && vendor/bin/phpunit"
+  },
+  "verify_steps": [
+    {
+      "cmd": "vendor/bin/pint --test",
+      "concern": "formatter"
+    },
+    {
+      "cmd": "vendor/bin/phpstan analyse",
+      "concern": "linter",
+      "command_key": "lint"
+    },
+    {
+      "cmd": "vendor/bin/phpunit",
+      "concern": "tests",
+      "command_key": "test"
+    }
+  ],
+  "permissions_allow": [
+    "Bash(composer install*)",
+    "Bash(composer validate*)",
+    "Bash(composer audit*)",
+    "Bash(composer dump-autoload*)",
+    "Bash(vendor/bin/phpunit*)",
+    "Bash(vendor/bin/pest*)",
+    "Bash(vendor/bin/phpstan*)",
+    "Bash(vendor/bin/pint*)",
+    "Bash(vendor/bin/php-cs-fixer*)"
+  ],
+  "format_rules": [
+    {
+      "extensions": [
+        ".php"
+      ],
+      "command": [
+        "vendor/bin/pint",
+        "{file}"
+      ]
+    }
+  ],
+  "tooling": [
+    {
+      "concern": "formatter",
+      "kit": {
+        "name": "pint",
+        "markers": [
+          {
+            "file": "pint.json"
+          },
+          {
+            "file": "composer.json",
+            "contains": "laravel/pint"
+          }
+        ],
+        "commands": [
+          "format"
+        ],
+        "format_rules": true,
+        "permissions": [
+          "Bash(vendor/bin/pint*)"
+        ],
+        "practice_terms": [
+          "pint"
+        ],
+        "preset_files": [
+          {
+            "src": "presets/pint.json.template",
+            "dest": "pint.json",
+            "mode": "create"
+          }
+        ],
+        "install_packages": [
+          "laravel/pint"
+        ]
+      },
+      "alternatives": [
+        {
+          "name": "php-cs-fixer",
+          "markers": [
+            {
+              "file": ".php-cs-fixer.dist.php"
+            },
+            {
+              "file": ".php-cs-fixer.php"
+            },
+            {
+              "file": "composer.json",
+              "contains": "friendsofphp/php-cs-fixer"
+            }
+          ],
+          "hooks": [
+            "php-cs-fixer"
+          ],
+          "commands": {
+            "format": "vendor/bin/php-cs-fixer fix"
+          },
+          "format_rule": {
+            "extensions": [
+              ".php"
+            ],
+            "command": [
+              "vendor/bin/php-cs-fixer",
+              "fix",
+              "{file}"
+            ]
+          },
+          "permissions_allow": [
+            "Bash(vendor/bin/php-cs-fixer*)"
+          ]
+        }
+      ]
+    },
+    {
+      "concern": "linter",
+      "kit": {
+        "name": "phpstan",
+        "markers": [
+          {
+            "file": "phpstan.neon"
+          },
+          {
+            "file": "phpstan.neon.dist"
+          },
+          {
+            "file": "phpstan.dist.neon"
+          }
+        ],
+        "commands": [
+          "lint"
+        ],
+        "permissions": [
+          "Bash(vendor/bin/phpstan*)"
+        ],
+        "practice_terms": [
+          "phpstan"
+        ],
+        "preset_files": [
+          {
+            "src": "presets/phpstan.neon.dist.template",
+            "dest": "phpstan.neon.dist",
+            "mode": "create"
+          }
+        ],
+        "install_packages": [
+          "phpstan/phpstan"
+        ]
+      },
+      "alternatives": [
+        {
+          "name": "psalm",
+          "markers": [
+            {
+              "file": "psalm.xml"
+            },
+            {
+              "file": "psalm.xml.dist"
+            }
+          ],
+          "hooks": [
+            "psalm"
+          ],
+          "commands": {
+            "lint": "vendor/bin/psalm"
+          },
+          "permissions_allow": [
+            "Bash(vendor/bin/psalm*)"
+          ]
+        },
+        {
+          "name": "phpcs",
+          "markers": [
+            {
+              "file": "phpcs.xml"
+            },
+            {
+              "file": "phpcs.xml.dist"
+            }
+          ],
+          "hooks": [
+            "phpcs"
+          ],
+          "commands": {
+            "lint": "vendor/bin/phpcs"
+          },
+          "permissions_allow": [
+            "Bash(vendor/bin/phpcs*)"
+          ]
+        }
+      ]
+    },
+    {
+      "concern": "tests",
+      "kit": {
+        "name": "phpunit",
+        "markers": [
+          {
+            "file": "phpunit.xml"
+          },
+          {
+            "file": "phpunit.dist.xml"
+          },
+          {
+            "file": "phpunit.xml.dist"
+          }
+        ],
+        "commands": [
+          "test",
+          "test_related"
+        ],
+        "permissions": [
+          "Bash(vendor/bin/phpunit*)"
+        ]
+      },
+      "alternatives": [
+        {
+          "name": "pest",
+          "markers": [
+            {
+              "file": "composer.json",
+              "contains": "pestphp/pest"
+            },
+            {
+              "file": "tests/Pest.php"
+            }
+          ],
+          "hooks": [
+            "pest"
+          ],
+          "commands": {
+            "test": "vendor/bin/pest",
+            "test_related": "vendor/bin/pest --filter <TestName>"
+          },
+          "permissions_allow": [
+            "Bash(vendor/bin/pest*)"
+          ]
+        }
+      ]
+    }
+  ],
+  "sources": [
+    "https://getcomposer.org/doc/03-cli.md",
+    "https://laravel.com/docs/pint",
+    "https://github.com/PHP-CS-Fixer/PHP-CS-Fixer/blob/master/doc/usage.rst",
+    "https://phpstan.org/config-reference",
+    "https://docs.phpunit.de/en/12.0/textui.html",
+    "https://www.php.net/manual/en/language.types.declarations.php",
+    "https://www.php-fig.org/per/coding-style/"
+  ],
+  "last_verified": "2026-11-28"
+}

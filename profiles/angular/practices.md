@@ -1,6 +1,7 @@
 - Follow the Angular style guide; generate code with `ng generate` so file names and structure stay standard.
-- Use `ChangeDetectionStrategy.OnPush` on components and keep templates free of logic.
+- Keep templates free of logic; put derived state in `computed`/getters or pipes.
 - Unsubscribe automatically (`async` pipe or framework teardown); never leave manual `subscribe` leaks.
 - Keep `strict` TypeScript and strict templates enabled; avoid `any`.
 - Use `npm ci` for reproducible installs; do not edit `package-lock.json` by hand.
-- Tests: test component behavior through the DOM, not private members.
+- Tests: test component behavior through the DOM, not private members; run once with `ng test --no-watch`.
+- Upgrade with `ng update`, one major version at a time, instead of editing `@angular/*` versions by hand.

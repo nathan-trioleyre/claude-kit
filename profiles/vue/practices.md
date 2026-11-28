@@ -1,0 +1,9 @@
+- Build with Vite and Single-File Components using `<script setup lang="ts">`; scaffold with `npm create vue@latest`.
+- Prefer `ref()` as the primary reactive API; `reactive()` only holds objects and loses reactivity when replaced or destructured.
+- Type-check with `vue-tsc` (it understands SFCs); plain `tsc` does not.
+- Keep ESLint on `eslint-plugin-vue`'s `flat/recommended`; with TypeScript set `parserOptions.parser` (not `parser`) to the TS parser.
+- Use multi-word component names, a unique `key` on every `v-for`, and never `v-if` on the same element as `v-for`.
+- Declare props and emits with types (`defineProps`/`defineEmits`); do not mutate props.
+- Only `VITE_`-prefixed variables reach the client (`import.meta.env`) and are baked in at build time: no secrets in them.
+- Test with Vitest (`vitest run` runs once); it reads `vite.config.*`, so aliases and plugins carry over.
+- Use `npm ci` for reproducible installs; do not edit `package-lock.json` by hand.

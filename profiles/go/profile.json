@@ -1,0 +1,198 @@
+{
+  "stack": "go",
+  "display_name": "Go",
+  "detect": [
+    "go.mod"
+  ],
+  "paths": [],
+  "commands": {
+    "install": "go mod download",
+    "dev": "go run .",
+    "test": "go test ./...",
+    "test_related": "go test ./... -run <TestName>",
+    "lint": "golangci-lint run",
+    "format": "gofmt -w .",
+    "hygiene": "go mod tidy -diff",
+    "audit": "govulncheck ./...",
+    "build": "go build ./...",
+    "verify": "go vet ./... && golangci-lint run && go test ./..."
+  },
+  "verify_steps": [
+    {
+      "cmd": "go vet ./...",
+      "concern": null
+    },
+    {
+      "cmd": "golangci-lint run",
+      "concern": "linter",
+      "command_key": "lint"
+    },
+    {
+      "cmd": "go test ./...",
+      "concern": null
+    }
+  ],
+  "permissions_allow": [
+    "Bash(go build*)",
+    "Bash(go test*)",
+    "Bash(go vet*)",
+    "Bash(go fmt*)",
+    "Bash(gofmt*)",
+    "Bash(go mod tidy*)",
+    "Bash(go mod download*)",
+    "Bash(go list*)",
+    "Bash(golangci-lint run*)",
+    "Bash(govulncheck*)"
+  ],
+  "format_rules": [
+    {
+      "extensions": [
+        ".go"
+      ],
+      "command": [
+        "gofmt",
+        "-w",
+        "{file}"
+      ]
+    }
+  ],
+  "tooling": [
+    {
+      "concern": "formatter",
+      "kit": {
+        "name": "gofmt",
+        "markers": [],
+        "commands": [
+          "format"
+        ],
+        "format_rules": true,
+        "permissions": [
+          "Bash(gofmt*)",
+          "Bash(go fmt*)"
+        ],
+        "practice_terms": [
+          "gofmt"
+        ]
+      },
+      "alternatives": [
+        {
+          "name": "gofumpt",
+          "markers": [
+            {
+              "file": ".golangci.*",
+              "contains": "gofumpt"
+            }
+          ],
+          "hooks": [
+            "gofumpt"
+          ],
+          "commands": {
+            "format": "gofumpt -w ."
+          },
+          "format_rule": {
+            "extensions": [
+              ".go"
+            ],
+            "command": [
+              "gofumpt",
+              "-w",
+              "{file}"
+            ]
+          },
+          "permissions_allow": [
+            "Bash(gofumpt*)"
+          ]
+        },
+        {
+          "name": "goimports",
+          "markers": [
+            {
+              "file": ".golangci.*",
+              "contains": "goimports"
+            }
+          ],
+          "hooks": [
+            "goimports"
+          ],
+          "commands": {
+            "format": "goimports -w ."
+          },
+          "format_rule": {
+            "extensions": [
+              ".go"
+            ],
+            "command": [
+              "goimports",
+              "-w",
+              "{file}"
+            ]
+          },
+          "permissions_allow": [
+            "Bash(goimports*)"
+          ]
+        }
+      ]
+    },
+    {
+      "concern": "linter",
+      "kit": {
+        "name": "golangci-lint",
+        "markers": [
+          {
+            "file": ".golangci.yml"
+          },
+          {
+            "file": ".golangci.yaml"
+          },
+          {
+            "file": ".golangci.toml"
+          },
+          {
+            "file": ".golangci.json"
+          }
+        ],
+        "commands": [
+          "lint"
+        ],
+        "permissions": [
+          "Bash(golangci-lint run*)"
+        ],
+        "practice_terms": [
+          "golangci-lint"
+        ],
+        "preset_files": [
+          {
+            "src": "presets/.golangci.yml.template",
+            "dest": ".golangci.yml",
+            "mode": "create"
+          }
+        ]
+      },
+      "alternatives": [
+        {
+          "name": "staticcheck",
+          "markers": [
+            {
+              "file": "staticcheck.conf"
+            }
+          ],
+          "hooks": [
+            "staticcheck"
+          ],
+          "commands": {
+            "lint": "staticcheck ./..."
+          },
+          "permissions_allow": [
+            "Bash(staticcheck*)"
+          ]
+        }
+      ]
+    }
+  ],
+  "sources": [
+    "https://go.dev/doc/effective_go",
+    "https://go.dev/doc/modules/managing-dependencies",
+    "https://golangci-lint.run/docs/configuration/file/"
+  ],
+  "last_verified": "2026-11-28"
+}

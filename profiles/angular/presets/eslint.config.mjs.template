@@ -1,12 +1,11 @@
 // @ts-check
 import eslint from '@eslint/js';
+import { defineConfig, globalIgnores } from 'eslint/config';
 import tseslint from 'typescript-eslint';
 import angular from 'angular-eslint';
 
-export default tseslint.config(
-  {
-    ignores: ['.angular/**', '.nx/**', 'coverage/**', 'dist/**'],
-  },
+export default defineConfig(
+  globalIgnores(['.angular/**', '.nx/**', 'coverage/**', 'dist/**']),
   {
     files: ['**/*.ts'],
     extends: [
@@ -33,9 +32,6 @@ export default tseslint.config(
   },
   {
     files: ['**/*.html'],
-    extends: [
-      ...angular.configs.templateRecommended,
-      ...angular.configs.templateAccessibility,
-    ],
+    extends: [...angular.configs.templateRecommended, ...angular.configs.templateAccessibility],
   },
 );

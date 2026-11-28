@@ -5,7 +5,8 @@
     "next.config.*"
   ],
   "supersedes": [
-    "typescript"
+    "typescript",
+    "react-vite"
   ],
   "paths": [],
   "commands": {
@@ -15,10 +16,10 @@
     "test_related": "npm test -- <file>",
     "lint": "npm run lint",
     "format": "npm run format",
-    "hygiene": "npx knip",
+    "hygiene": "{run} knip",
     "audit": "npm audit --audit-level=high",
     "build": "npm run build",
-    "verify": "npm run lint && tsc --noEmit && npm run build"
+    "verify": "npm run lint && {run} tsc --noEmit && npm run build"
   },
   "verify_steps": [
     {
@@ -27,7 +28,7 @@
       "command_key": "lint"
     },
     {
-      "cmd": "tsc --noEmit",
+      "cmd": "{run} tsc --noEmit",
       "concern": "typechecker"
     },
     {
@@ -41,7 +42,13 @@
     "Bash(npm test*)",
     "Bash(npm run build*)",
     "Bash(npm run lint*)",
-    "Bash(tsc --noEmit*)"
+    "Bash(npm run test*)",
+    "Bash(npm run typecheck*)",
+    "Bash(npm run format*)",
+    "Bash(npm audit*)",
+    "Bash({run} tsc*)",
+    "Bash({run} eslint*)",
+    "Bash({run} prettier*)"
   ],
   "format_rules": [
     {
@@ -93,7 +100,10 @@
         ],
         "scripts": {
           "format": "prettier --write ."
-        }
+        },
+        "permissions": [
+          "Bash({run} prettier*)"
+        ]
       },
       "alternatives": [
         {
@@ -124,7 +134,13 @@
               "--write",
               "{file}"
             ]
-          }
+          },
+          "commands": {
+            "format": "{run} biome format --write ."
+          },
+          "permissions_allow": [
+            "Bash({run} biome*)"
+          ]
         }
       ]
     },
@@ -148,7 +164,8 @@
           "lint"
         ],
         "permissions": [
-          "Bash(npm run lint*)"
+          "Bash(npm run lint*)",
+          "Bash({run} eslint*)"
         ],
         "preset_files": [
           {
@@ -205,7 +222,13 @@
               "--write",
               "{file}"
             ]
-          }
+          },
+          "commands": {
+            "lint": "{run} biome check ."
+          },
+          "permissions_allow": [
+            "Bash({run} biome*)"
+          ]
         }
       ]
     },
@@ -220,7 +243,7 @@
         ],
         "commands": [],
         "permissions": [
-          "Bash(tsc --noEmit*)"
+          "Bash({run} tsc*)"
         ],
         "preset_files": [
           {
@@ -244,7 +267,10 @@
           "install",
           "dev",
           "test",
+          "test_related",
           "lint",
+          "format",
+          "audit",
           "build",
           "verify"
         ],
@@ -252,12 +278,17 @@
           "Bash(npm ci)",
           "Bash(npm test*)",
           "Bash(npm run build*)",
-          "Bash(npm run lint*)"
+          "Bash(npm run lint*)",
+          "Bash(npm run test*)",
+          "Bash(npm run typecheck*)",
+          "Bash(npm run format*)",
+          "Bash(npm audit*)"
         ],
         "practice_terms": [
           "npm ci",
           "package-lock.json"
-        ]
+        ],
+        "runner": "npx"
       },
       "alternatives": [
         {
@@ -272,18 +303,25 @@
           ],
           "commands": {
             "install": "pnpm install --frozen-lockfile",
-            "dev": "pnpm dev",
+            "dev": "pnpm run dev",
             "test": "pnpm test",
-            "lint": "pnpm lint",
-            "build": "pnpm build",
-            "verify": "pnpm lint && tsc --noEmit && pnpm build"
+            "test_related": "pnpm test <file>",
+            "lint": "pnpm run lint",
+            "format": "pnpm run format",
+            "build": "pnpm run build",
+            "audit": "pnpm audit --audit-level=high"
           },
           "permissions_allow": [
             "Bash(pnpm install*)",
             "Bash(pnpm test*)",
             "Bash(pnpm run build*)",
-            "Bash(pnpm run lint*)"
-          ]
+            "Bash(pnpm run lint*)",
+            "Bash(pnpm run test*)",
+            "Bash(pnpm run typecheck*)",
+            "Bash(pnpm run format*)",
+            "Bash(pnpm audit*)"
+          ],
+          "runner": "pnpm exec"
         },
         {
           "name": "yarn",
@@ -299,16 +337,20 @@
             "install": "yarn install --frozen-lockfile",
             "dev": "yarn dev",
             "test": "yarn test",
+            "test_related": "yarn test <file>",
             "lint": "yarn lint",
-            "build": "yarn build",
-            "verify": "yarn lint && tsc --noEmit && yarn build"
+            "format": "yarn format",
+            "build": "yarn build"
           },
           "permissions_allow": [
             "Bash(yarn install*)",
             "Bash(yarn test*)",
             "Bash(yarn build*)",
-            "Bash(yarn lint*)"
-          ]
+            "Bash(yarn lint*)",
+            "Bash(yarn format*)",
+            "Bash(yarn typecheck*)"
+          ],
+          "runner": "yarn"
         },
         {
           "name": "bun",
@@ -326,11 +368,14 @@
           "commands": {
             "install": "bun install --frozen-lockfile",
             "dev": "bun run dev",
-            "test": "bun test",
+            "test": "bun run test",
+            "test_related": "bun run test <file>",
             "lint": "bun run lint",
+            "format": "bun run format",
             "build": "bun run build",
-            "verify": "bun run lint && tsc --noEmit && bun run build"
-          }
+            "audit": "bun audit"
+          },
+          "runner": "bunx"
         }
       ]
     }
@@ -338,7 +383,8 @@
   "sources": [
     "https://nextjs.org/docs/app/getting-started",
     "https://nextjs.org/docs/app/building-your-application/rendering/composition-patterns",
-    "https://nextjs.org/docs/app/api-reference/config/eslint"
+    "https://nextjs.org/docs/app/api-reference/config/eslint",
+    "https://nextjs.org/blog/next-16"
   ],
-  "last_verified": "2026-11-27"
+  "last_verified": "2026-11-28"
 }

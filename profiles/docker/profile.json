@@ -20,7 +20,9 @@
     "verify": null
   },
   "permissions_allow": [
-    "Bash(hadolint *)"
+    "Bash(hadolint*)",
+    "Bash(docker build*)",
+    "Bash(docker compose config*)"
   ],
   "format_rules": [],
   "tooling": [

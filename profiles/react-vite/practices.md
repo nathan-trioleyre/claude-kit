@@ -1,0 +1,9 @@
+- Scaffold and structure with Vite (`dev`, `build`, `preview`); keep `vite.config.*` and `tsconfig*.json` as the single source of build/type settings.
+- Only `VITE_`-prefixed variables reach the client bundle and are baked in at build time: never put secrets in them.
+- Keep TypeScript `strict: true`; avoid `any` (prefer `unknown` + narrowing); type-check with `tsc -b`.
+- Calculate derived values during render; do not mirror props/state in state plus an Effect.
+- Handle user events in event handlers; use Effects only to synchronize with external systems, and clean up fetches (ignore flag or `AbortController`).
+- Reset a subtree's state by changing its `key`, not with Effects.
+- Keep `eslint-plugin-react-hooks` enabled and fix its warnings instead of disabling them.
+- Test with Vitest (`vitest run` runs once, `vitest` watches); it reads `vite.config.*` so aliases and plugins carry over.
+- Use `npm ci` for reproducible installs; do not edit `package-lock.json` by hand.

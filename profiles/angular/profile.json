@@ -1,6 +1,6 @@
 {
   "stack": "angular",
-  "display_name": "Angular (Angular CLI + npm)",
+  "display_name": "Angular (Angular CLI)",
   "detect": [
     "angular.json"
   ],
@@ -11,14 +11,14 @@
   "commands": {
     "install": "npm ci",
     "dev": "npm start",
-    "test": "npm test -- --watch=false",
-    "test_related": "npm test -- --watch=false --include <spec>",
+    "test": "npm test -- --no-watch",
+    "test_related": "npm test -- --no-watch --include <spec>",
     "lint": "npm run lint",
     "format": "npm run format",
-    "hygiene": "npx knip",
+    "hygiene": "{run} knip",
     "audit": "npm audit --audit-level=high",
     "build": "npm run build",
-    "verify": "npm run lint && npm test -- --watch=false && npm run build"
+    "verify": "npm run lint && npm test -- --no-watch && npm run build"
   },
   "verify_steps": [
     {
@@ -27,7 +27,7 @@
       "command_key": "lint"
     },
     {
-      "cmd": "npm test -- --watch=false",
+      "cmd": "npm test -- --no-watch",
       "concern": "package-manager",
       "command_key": "test"
     },
@@ -42,6 +42,10 @@
     "Bash(npm test*)",
     "Bash(npm run build*)",
     "Bash(npm run lint*)",
+    "Bash(npm run test*)",
+    "Bash(npm run typecheck*)",
+    "Bash(npm run format*)",
+    "Bash(npm audit*)",
     "Bash(ng test*)",
     "Bash(ng build*)",
     "Bash(ng lint*)"
@@ -124,7 +128,13 @@
               "--write",
               "{file}"
             ]
-          }
+          },
+          "commands": {
+            "format": "{run} biome format --write ."
+          },
+          "permissions_allow": [
+            "Bash({run} biome*)"
+          ]
         },
         {
           "name": "dprint",
@@ -218,7 +228,13 @@
               "--write",
               "{file}"
             ]
-          }
+          },
+          "commands": {
+            "lint": "{run} biome check ."
+          },
+          "permissions_allow": [
+            "Bash({run} biome*)"
+          ]
         }
       ]
     },
@@ -235,7 +251,10 @@
           "install",
           "dev",
           "test",
+          "test_related",
           "lint",
+          "format",
+          "audit",
           "build",
           "verify"
         ],
@@ -243,12 +262,17 @@
           "Bash(npm ci)",
           "Bash(npm test*)",
           "Bash(npm run build*)",
-          "Bash(npm run lint*)"
+          "Bash(npm run lint*)",
+          "Bash(npm run test*)",
+          "Bash(npm run typecheck*)",
+          "Bash(npm run format*)",
+          "Bash(npm audit*)"
         ],
         "practice_terms": [
           "npm ci",
           "package-lock.json"
-        ]
+        ],
+        "runner": "npx"
       },
       "alternatives": [
         {
@@ -264,17 +288,24 @@
           "commands": {
             "install": "pnpm install --frozen-lockfile",
             "dev": "pnpm start",
-            "test": "pnpm test --watch=false",
+            "test": "pnpm test --no-watch",
+            "test_related": "pnpm test --no-watch --include <spec>",
             "lint": "pnpm run lint",
+            "format": "pnpm run format",
             "build": "pnpm run build",
-            "verify": "pnpm run lint && pnpm test --watch=false && pnpm run build"
+            "audit": "pnpm audit --audit-level=high"
           },
           "permissions_allow": [
             "Bash(pnpm install*)",
             "Bash(pnpm test*)",
             "Bash(pnpm run build*)",
-            "Bash(pnpm run lint*)"
-          ]
+            "Bash(pnpm run lint*)",
+            "Bash(pnpm run test*)",
+            "Bash(pnpm run typecheck*)",
+            "Bash(pnpm run format*)",
+            "Bash(pnpm audit*)"
+          ],
+          "runner": "pnpm exec"
         },
         {
           "name": "yarn",
@@ -289,17 +320,21 @@
           "commands": {
             "install": "yarn install --frozen-lockfile",
             "dev": "yarn start",
-            "test": "yarn test --watch=false",
+            "test": "yarn test --no-watch",
+            "test_related": "yarn test --no-watch --include <spec>",
             "lint": "yarn lint",
-            "build": "yarn build",
-            "verify": "yarn lint && yarn test --watch=false && yarn build"
+            "format": "yarn format",
+            "build": "yarn build"
           },
           "permissions_allow": [
             "Bash(yarn install*)",
             "Bash(yarn test*)",
             "Bash(yarn build*)",
-            "Bash(yarn lint*)"
-          ]
+            "Bash(yarn lint*)",
+            "Bash(yarn format*)",
+            "Bash(yarn typecheck*)"
+          ],
+          "runner": "yarn"
         },
         {
           "name": "bun",
@@ -317,11 +352,14 @@
           "commands": {
             "install": "bun install --frozen-lockfile",
             "dev": "bun run start",
-            "test": "bun run test -- --watch=false",
+            "test": "bun run test --no-watch",
+            "test_related": "bun run test --no-watch --include <spec>",
             "lint": "bun run lint",
+            "format": "bun run format",
             "build": "bun run build",
-            "verify": "bun run lint && bun run test -- --watch=false && bun run build"
-          }
+            "audit": "bun audit"
+          },
+          "runner": "bunx"
         }
       ]
     }
@@ -332,7 +370,11 @@
     "https://angular.dev/best-practices",
     "https://angular.dev/guide/zoneless",
     "https://angular.dev/guide/testing/migrating-to-vitest",
-    "https://github.com/angular-eslint/angular-eslint/blob/main/docs/CONFIGURING_ESLINT.md"
+    "https://github.com/angular-eslint/angular-eslint/blob/main/docs/CONFIGURING_ESLINT.md",
+    "https://angular.dev/guide/testing",
+    "https://angular.dev/guide/testing/karma",
+    "https://angular.dev/reference/versions",
+    "https://github.com/angular/angular/blob/main/CHANGELOG.md"
   ],
-  "last_verified": "2026-11-27"
+  "last_verified": "2026-11-28"
 }

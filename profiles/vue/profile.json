@@ -1,0 +1,444 @@
+{
+  "stack": "vue",
+  "display_name": "Vue 3 + Vite (TypeScript)",
+  "detect": [
+    "*.vue"
+  ],
+  "supersedes": [
+    "typescript"
+  ],
+  "paths": [],
+  "commands": {
+    "install": "npm ci",
+    "dev": "npm run dev",
+    "test": "npm test",
+    "test_related": "npm test -- <file>",
+    "lint": "npm run lint",
+    "format": "npm run format",
+    "hygiene": "{run} knip",
+    "audit": "npm audit --audit-level=high",
+    "build": "npm run build",
+    "verify": "npm run lint && {run} vue-tsc --build && npm test && npm run build"
+  },
+  "verify_steps": [
+    {
+      "cmd": "npm run lint",
+      "concern": "linter",
+      "command_key": "lint"
+    },
+    {
+      "cmd": "{run} vue-tsc --build",
+      "concern": null
+    },
+    {
+      "cmd": "npm test",
+      "concern": "package-manager",
+      "command_key": "test"
+    },
+    {
+      "cmd": "npm run build",
+      "concern": "package-manager",
+      "command_key": "build"
+    }
+  ],
+  "permissions_allow": [
+    "Bash(npm ci)",
+    "Bash(npm test*)",
+    "Bash(npm run build*)",
+    "Bash(npm run lint*)",
+    "Bash(npm run test*)",
+    "Bash(npm run typecheck*)",
+    "Bash(npm run format*)",
+    "Bash(npm audit*)",
+    "Bash({run} vue-tsc*)",
+    "Bash({run} eslint*)",
+    "Bash({run} prettier*)",
+    "Bash({run} tsc*)"
+  ],
+  "format_rules": [
+    {
+      "extensions": [
+        ".ts",
+        ".js",
+        ".vue",
+        ".css",
+        ".json"
+      ],
+      "command": [
+        "prettier",
+        "--write",
+        "{file}"
+      ]
+    }
+  ],
+  "tooling": [
+    {
+      "concern": "formatter",
+      "kit": {
+        "name": "prettier",
+        "markers": [
+          {
+            "file": ".prettierrc*"
+          },
+          {
+            "file": "prettier.config.*"
+          },
+          {
+            "file": "package.json",
+            "contains": "\"prettier\""
+          }
+        ],
+        "commands": [
+          "format"
+        ],
+        "format_rules": true,
+        "preset_files": [
+          {
+            "src": "presets/.prettierrc.template",
+            "dest": ".prettierrc",
+            "mode": "create"
+          }
+        ],
+        "install_packages": [
+          "prettier"
+        ],
+        "scripts": {
+          "format": "prettier --write ."
+        },
+        "permissions": [
+          "Bash({run} prettier*)"
+        ]
+      },
+      "alternatives": [
+        {
+          "name": "biome",
+          "markers": [
+            {
+              "file": "biome.json"
+            },
+            {
+              "file": "biome.jsonc"
+            }
+          ],
+          "hooks": [
+            "biome"
+          ],
+          "commands": {
+            "format": "{run} biome format --write ."
+          },
+          "format_rule": {
+            "extensions": [
+              ".ts",
+              ".js",
+              ".vue",
+              ".css",
+              ".json"
+            ],
+            "command": [
+              "biome",
+              "format",
+              "--write",
+              "{file}"
+            ]
+          },
+          "permissions_allow": [
+            "Bash({run} biome*)"
+          ]
+        }
+      ]
+    },
+    {
+      "concern": "linter",
+      "kit": {
+        "name": "eslint",
+        "markers": [
+          {
+            "file": "eslint.config.*"
+          },
+          {
+            "file": ".eslintrc*"
+          },
+          {
+            "file": "package.json",
+            "contains": "\"eslint\""
+          }
+        ],
+        "commands": [
+          "lint"
+        ],
+        "permissions": [
+          "Bash(npm run lint*)",
+          "Bash({run} eslint*)"
+        ],
+        "preset_files": [
+          {
+            "src": "presets/eslint.config.mjs.template",
+            "dest": "eslint.config.mjs",
+            "mode": "create"
+          }
+        ],
+        "install_packages": [
+          "eslint",
+          "@eslint/js",
+          "typescript-eslint",
+          "eslint-plugin-vue",
+          "globals"
+        ],
+        "scripts": {
+          "lint": "eslint ."
+        },
+        "post_edit_check": {
+          "extensions": [
+            ".ts",
+            ".js",
+            ".vue"
+          ],
+          "command": [
+            "eslint",
+            "--fix",
+            "{file}"
+          ]
+        }
+      },
+      "alternatives": [
+        {
+          "name": "biome",
+          "markers": [
+            {
+              "file": "biome.json"
+            },
+            {
+              "file": "biome.jsonc"
+            }
+          ],
+          "hooks": [
+            "biome"
+          ],
+          "commands": {
+            "lint": "{run} biome check ."
+          },
+          "post_edit_check": {
+            "extensions": [
+              ".ts",
+              ".js",
+              ".vue"
+            ],
+            "command": [
+              "biome",
+              "check",
+              "--write",
+              "{file}"
+            ]
+          },
+          "permissions_allow": [
+            "Bash({run} biome*)"
+          ]
+        },
+        {
+          "name": "oxlint",
+          "markers": [
+            {
+              "file": ".oxlintrc.json"
+            },
+            {
+              "file": "oxlintrc.json"
+            }
+          ],
+          "hooks": [
+            "oxlint"
+          ],
+          "commands": {
+            "lint": "{run} oxlint"
+          },
+          "post_edit_check": {
+            "extensions": [
+              ".ts",
+              ".js",
+              ".vue"
+            ],
+            "command": [
+              "oxlint",
+              "{file}"
+            ]
+          },
+          "permissions_allow": [
+            "Bash({run} oxlint*)"
+          ]
+        }
+      ]
+    },
+    {
+      "concern": "tests",
+      "kit": {
+        "name": "vitest",
+        "markers": [
+          {
+            "file": "vitest.config.*"
+          },
+          {
+            "file": "package.json",
+            "contains": "\"vitest\""
+          }
+        ],
+        "commands": [],
+        "install_packages": [
+          "vitest"
+        ],
+        "scripts": {
+          "test": "vitest run"
+        }
+      },
+      "alternatives": [
+        {
+          "name": "jest",
+          "markers": [
+            {
+              "file": "jest.config.*"
+            },
+            {
+              "file": "package.json",
+              "contains": "\"jest\""
+            }
+          ],
+          "hooks": [
+            "jest"
+          ]
+        }
+      ]
+    },
+    {
+      "concern": "package-manager",
+      "kit": {
+        "name": "npm",
+        "markers": [
+          {
+            "file": "package-lock.json"
+          }
+        ],
+        "commands": [
+          "install",
+          "dev",
+          "test",
+          "test_related",
+          "lint",
+          "format",
+          "audit",
+          "build",
+          "verify"
+        ],
+        "permissions": [
+          "Bash(npm ci)",
+          "Bash(npm test*)",
+          "Bash(npm run build*)",
+          "Bash(npm run lint*)",
+          "Bash(npm run test*)",
+          "Bash(npm run typecheck*)",
+          "Bash(npm run format*)",
+          "Bash(npm audit*)"
+        ],
+        "practice_terms": [
+          "npm ci",
+          "package-lock.json"
+        ],
+        "runner": "npx"
+      },
+      "alternatives": [
+        {
+          "name": "pnpm",
+          "markers": [
+            {
+              "file": "pnpm-lock.yaml"
+            }
+          ],
+          "hooks": [
+            "pnpm"
+          ],
+          "commands": {
+            "install": "pnpm install --frozen-lockfile",
+            "dev": "pnpm run dev",
+            "test": "pnpm test",
+            "test_related": "pnpm test <file>",
+            "lint": "pnpm run lint",
+            "format": "pnpm run format",
+            "build": "pnpm run build",
+            "audit": "pnpm audit --audit-level=high"
+          },
+          "permissions_allow": [
+            "Bash(pnpm install*)",
+            "Bash(pnpm test*)",
+            "Bash(pnpm run build*)",
+            "Bash(pnpm run lint*)",
+            "Bash(pnpm run test*)",
+            "Bash(pnpm run typecheck*)",
+            "Bash(pnpm run format*)",
+            "Bash(pnpm audit*)"
+          ],
+          "runner": "pnpm exec"
+        },
+        {
+          "name": "yarn",
+          "markers": [
+            {
+              "file": "yarn.lock"
+            }
+          ],
+          "hooks": [
+            "yarn"
+          ],
+          "commands": {
+            "install": "yarn install --frozen-lockfile",
+            "dev": "yarn dev",
+            "test": "yarn test",
+            "test_related": "yarn test <file>",
+            "lint": "yarn lint",
+            "format": "yarn format",
+            "build": "yarn build"
+          },
+          "permissions_allow": [
+            "Bash(yarn install*)",
+            "Bash(yarn test*)",
+            "Bash(yarn build*)",
+            "Bash(yarn lint*)",
+            "Bash(yarn format*)",
+            "Bash(yarn typecheck*)"
+          ],
+          "runner": "yarn"
+        },
+        {
+          "name": "bun",
+          "markers": [
+            {
+              "file": "bun.lock"
+            },
+            {
+              "file": "bun.lockb"
+            }
+          ],
+          "hooks": [
+            "bun"
+          ],
+          "commands": {
+            "install": "bun install --frozen-lockfile",
+            "dev": "bun run dev",
+            "test": "bun run test",
+            "test_related": "bun run test <file>",
+            "lint": "bun run lint",
+            "format": "bun run format",
+            "build": "bun run build",
+            "audit": "bun audit"
+          },
+          "runner": "bunx"
+        }
+      ]
+    }
+  ],
+  "sources": [
+    "https://vuejs.org/guide/scaling-up/tooling.html",
+    "https://vuejs.org/guide/essentials/reactivity-fundamentals.html",
+    "https://eslint.vuejs.org/user-guide/",
+    "https://vite.dev/guide/",
+    "https://vite.dev/guide/env-and-mode",
+    "https://vitest.dev/guide/"
+  ],
+  "last_verified": "2026-11-28"
+}
