@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .core import BASE, detect_eol, emit, _is_unsafe_dest_path, load_kit_json, load_profile, PROFILES, read_json, write_text
 from .tooling import analyze_tooling
-from .ci import render_ci_workflow
+from .ci import CI_DESTS, detect_ci_provider, render_ci
 
 
 def _copy_preset_non_destructive(src: Path, dest: Path, label: str, project: Path, dry: bool,
@@ -101,13 +101,14 @@ def cmd_scaffold_tooling(args) -> None:
                 )
                 report.append("hint      run `git config core.hooksPath .githooks` locally to activate")
         elif args.base_preset == "ci":
-            ci_dest = project / ".github" / "workflows" / "ci.yml"
+            provider = getattr(args, "ci_provider", None) or detect_ci_provider(project)
+            rel = CI_DESTS[provider]
+            ci_dest = project / rel
             if ci_dest.exists():
-                report.append("skipped   .github/workflows/ci.yml (already exists)")
+                report.append(f"skipped   {rel} (already exists)")
             else:
-                ci_content = render_ci_workflow(project)
-                write_text(ci_dest, ci_content, args.dry_run)
-                report.append("created   .github/workflows/ci.yml")
+                write_text(ci_dest, render_ci(project, provider), args.dry_run)
+                report.append(f"created   {rel}")
         emit(report, args.dry_run)
         return
 

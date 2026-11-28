@@ -121,7 +121,7 @@ Skip this step completely in `local` mode (`--local` must never modify repo-wide
    - **Declined**: record `"<concern>": "skip"` so its commands, hooks, and `verify` steps stay withheld.
 2. If root `.editorconfig` is missing, offer `APPLY scaffold-tooling --project . --base-preset editorconfig`.
 3. If no git hook setup (`.husky/`, `.pre-commit-config.yaml`, `lefthook.yml`, `.githooks/`) exists, offer `APPLY scaffold-tooling --project . --base-preset pre-commit` and, if approved, activate it locally with `git config core.hooksPath .githooks`.
-4. If `.github/workflows/` has no CI workflow, offer `APPLY scaffold-tooling --project . --base-preset ci` to generate `.github/workflows/ci.yml` from the active profiles.
+4. If the project has no CI (neither a workflow in `.github/workflows/` nor `.gitlab-ci.yml`), offer a CI file for the host of the `origin` remote, generated from the active profiles: `APPLY scaffold-tooling --project . --base-preset ci --ci-provider github|gitlab` (`.github/workflows/ci.yml` or `.gitlab-ci.yml`). Without `--ci-provider` the script detects GitLab only when the remote URL contains `gitlab`, so pass it explicitly for a self-hosted GitLab. For any other host (Bitbucket, Azure DevOps...), skip this offer.
 
 Complete Step 3c **before** Step 4 so `apply.py apply` detects the newly scaffolded markers in one pass.
 

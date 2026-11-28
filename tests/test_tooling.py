@@ -840,6 +840,52 @@ class TestToolingConflicts(unittest.TestCase):
             self.assertIn("skipped", out2)
             self.assertEqual(ci_file.read_text(encoding="utf-8"), "name: custom\n")
 
+    def test_scaffold_tooling_base_preset_ci_targets_gitlab_when_remote_is_gitlab(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            kit = kit_with_real_profiles(t, "python", "typescript")
+            apply_bin = apply_bin_of(kit)
+            proj = t / "mono"
+            write(proj / "pyproject.toml", "[project]\nname='api'\n")
+            write(proj / "tsconfig.json", "{}")
+            write(proj / "pnpm-lock.yaml", "")
+            subprocess.run(["git", "init", "-q", str(proj)], check=True)
+            subprocess.run(["git", "-C", str(proj), "remote", "add", "origin",
+                            "git@gitlab.com:team/mono.git"], check=True)
+
+            out = run_apply(apply_bin, "scaffold-tooling", "--project", str(proj), "--base-preset", "ci").stdout
+            self.assertIn(".gitlab-ci.yml", out)
+            self.assertFalse((proj / ".github").exists())
+            gl = (proj / ".gitlab-ci.yml").read_text(encoding="utf-8")
+            self.assertIn("image: python:3.12", gl)
+            self.assertIn("pip install uv", gl)
+            self.assertIn("uv sync", gl)
+            self.assertIn("image: node:22", gl)
+            self.assertIn("corepack enable", gl)
+            self.assertIn("pnpm install --frozen-lockfile", gl)
+            self.assertIn("merge_request_event", gl)
+            self.assertNotIn("actions/", gl)
+
+            # Never overwrites an existing .gitlab-ci.yml
+            (proj / ".gitlab-ci.yml").write_text("stages: [x]\n", encoding="utf-8")
+            out2 = run_apply(apply_bin, "scaffold-tooling", "--project", str(proj), "--base-preset", "ci").stdout
+            self.assertIn("skipped", out2)
+            self.assertEqual((proj / ".gitlab-ci.yml").read_text(encoding="utf-8"), "stages: [x]\n")
+
+    def test_scaffold_tooling_ci_provider_flag_overrides_detection(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            kit = kit_with_real_profiles(t, "rust")
+            apply_bin = apply_bin_of(kit)
+            proj = t / "selfhosted"
+            write(proj / "Cargo.toml", "[package]\nname='x'\nversion='0.1.0'\n")
+            run_apply(apply_bin, "scaffold-tooling", "--project", str(proj),
+                      "--base-preset", "ci", "--ci-provider", "gitlab")
+            gl = (proj / ".gitlab-ci.yml").read_text(encoding="utf-8")
+            self.assertIn("image: rust:1", gl)
+            self.assertIn("rustup component add clippy rustfmt", gl)
+            self.assertIn("cargo fetch", gl)
+
     def test_real_profiles_expose_targeted_tests_hygiene_and_audit_commands(self):
         with tempfile.TemporaryDirectory() as tmp:
             t = Path(tmp)

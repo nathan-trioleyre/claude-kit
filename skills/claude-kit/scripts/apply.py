@@ -111,6 +111,8 @@ def main() -> None:
     p_scaffold.add_argument("--profile")
     p_scaffold.add_argument("--concern")
     p_scaffold.add_argument("--base-preset", choices=["editorconfig", "pre-commit", "ci"])
+    p_scaffold.add_argument("--ci-provider", choices=["github", "gitlab"],
+                            help="CI target for --base-preset ci (default: detected from existing CI or origin remote)")
     p_scaffold.add_argument("--dry-run", action="store_true")
     p_scaffold.add_argument("--local", action="store_true")
     p_scaffold.set_defaults(func=cmd_scaffold_tooling)
