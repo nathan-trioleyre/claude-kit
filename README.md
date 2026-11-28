@@ -44,7 +44,7 @@ Each layer only **adds** to the previous one. See [org/README.md](org/README.md)
 In each configured project, the kit sets up these Claude Code building blocks:
 1. **`CLAUDE.md`**: invariants, commands, architecture, and gotchas (40–60 lines target; `@file` imports supported). Memory is Claude Code's native auto-memory; for pausing work, `/handoff` writes a short `.claude/handoff.md` (gitignored), which the SessionStart hook points to.
 2. **`.claude/rules/*.md`**: modular rules scoped by `paths` (monorepos, `base/rules/`, `org/rules/`).
-3. **`.claude/skills/`** (and `commands/`): optional on-demand workflows from `base/` (`/commit`, `/handoff`, `/review`, `/pr`) or `org/`.
+3. **`.claude/skills/`** (and `commands/`): optional on-demand workflows from `base/` (`/commit`, `/handoff`, `/review`) or `org/`.
 4. **`.claude/agents/` & `.claude/codemap.md`**: isolated subagents from `base/` (`code-reviewer`) or `org/`, plus a compact auto-generated project codemap to save exploration tokens.
 5. **Hooks (`.claude/settings.json`) & Observability**: deterministic guardrails (`SessionStart` with `session-check.py` including `~/.npmrc` supply-chain checks, `PreToolUse` with `guard.py`, `PostToolUse` with `format.py` running `lint_rules` then `format_rules`, and `Stop` with `verify-stop.py` active by default whenever `verify_command` is set — opt-out via `"stop_verify": false` in `.claude/kit.json`). Hook blocks and session token/cost usage are logged to `.claude/logs/` and summarized via `apply.py stats` (and `doctor` / `/claude-kit-learn`). Also optional `.github/workflows/ci.yml` (`--base-preset ci`) and `.githooks/pre-commit` (with `gitleaks` if installed).
 
@@ -82,7 +82,7 @@ claude-kit/
 │   ├── settings.base.json      hardened permissions + hook wiring
 │   ├── hooks/                  run-hook.sh, guard.py, format.py, session-check.py, verify-stop.py
 │   ├── agents/                 code-reviewer subagent
-│   ├── skills/                 commit, handoff, review, pr
+│   ├── skills/                 commit, handoff, review
 │   └── commands/ rules/        optional: copied into each project if present
 ├── org/                        optional company layer (rules, permissions, MCP, agents, commands, skills)
 ├── profiles/                   one folder per stack

@@ -22,7 +22,7 @@ argument-hint: "[optional hint or message]"
 - **Never stage secrets or local artifacts**: `.env*` (except `.env.example`/`.template`/`.sample`), `*.pem`, `*.key`, `credentials*`, `*.proposed`, `.claude/logs/`.
 - **Check `git status`** for untracked files: stage new files that belong to the change, flag the rest.
 - **One logical change per commit**: if the working tree mixes unrelated changes, split them into separate commits.
-- **Targeted checks, not full verify**: run the tests for the changed files (the targeted/`test_related` command listed in `CLAUDE.md` Commands, if any) and the linter on the changed files only. Skip for pure doc/comment edits. Full verify is for before push/PR (`/pr`).
+- **Targeted checks, not full verify**: run the tests for the changed files (the targeted/`test_related` command listed in `CLAUDE.md` Commands, if any) and the linter on the changed files only. Skip for pure doc/comment edits. Run the full verify command before pushing or opening a PR.
 
 ## Step 3: stage and commit
 

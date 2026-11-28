@@ -142,7 +142,7 @@ If any `.proposed` file was created (`CLAUDE.md.proposed` or `.claude/rules/<sta
 Provide a brief summary:
 - what was created or modified in the project (ready to commit) and any new profile saved to the kit (`git -C KIT status`); for a stack without profile, offer to create it now;
 - any `CLAUDE.md` sections still marked `_To be completed._`;
-- restart the Claude Code session so hooks load (verify with `/hooks`); mention `/commit`, `/handoff`, `/review`, `/pr`, and `/claude-kit-learn` if "Lessons Learned" is filled.
+- restart the Claude Code session so hooks load (verify with `/hooks`); mention `/commit`, `/handoff`, `/review`, and `/claude-kit-learn` if "Lessons Learned" is filled.
 
 ## Rules
 
