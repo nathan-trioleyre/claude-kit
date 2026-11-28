@@ -143,7 +143,7 @@ class TestToolingConflicts(unittest.TestCase):
             t = Path(tmp)
             apply_bin = apply_bin_of(kit_with_real_profiles(t, "python"))
             proj = t / "clean"
-            write(proj / "pyproject.toml", "[project]\nname = 'x'\n")
+            write(proj / "pyproject.toml", "[project]\nname = 'x'\n\n[tool.ruff]\nline-length = 100\n")
             out = run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python").stdout
             self.assertNotIn("CONFLICT", out)
             self.assertEqual(kit_json(proj)["format_rules"][0]["command"][0], "ruff")
@@ -224,7 +224,7 @@ class TestToolingConflicts(unittest.TestCase):
 
             # Poetry + ruff (no linter conflict) keeps poetry run ruff lint/format/verify
             proj_ruff = t / "poetry-ruff"
-            write(proj_ruff / "pyproject.toml", "[tool.poetry]\nname = 'x'\n")
+            write(proj_ruff / "pyproject.toml", "[tool.poetry]\nname = 'x'\n\n[tool.ruff]\n")
             write(proj_ruff / "poetry.lock", "")
             run_apply(apply_bin, "apply", "--project", str(proj_ruff), "--profiles", "python")
             md_ruff = (proj_ruff / "CLAUDE.md").read_text(encoding="utf-8")
@@ -239,7 +239,8 @@ class TestToolingConflicts(unittest.TestCase):
             run_apply(apply_bin, "apply", "--project", str(proj_f8), "--profiles", "python")
             md_f8 = (proj_f8 / "CLAUDE.md").read_text(encoding="utf-8")
             self.assertIn("- Install: `poetry install`", md_f8)
-            self.assertIn("- Lint: `flake8`", md_f8)
+            self.assertIn("- Lint: `poetry run flake8 .`", md_f8)
+            self.assertIn("`poetry run flake8 . && poetry run pytest`", md_f8)
             self.assertNotIn("`poetry run ruff check", md_f8)
 
     def test_validate_accepts_extended_preset_fields_and_verify_steps(self):
@@ -390,6 +391,41 @@ class TestToolingConflicts(unittest.TestCase):
         }, indent=2))
         return kit, apply_bin_of(kit)
 
+    def test_unsafe_permission_allows_runner_with_specific_tool_only(self):
+        scripts = str(KIT / "skills" / "claude-kit" / "scripts")
+        if scripts not in sys.path:
+            sys.path.insert(0, scripts)
+        from kitlib.core import unsafe_permission
+        for rule in ("Bash(npx *)", "Bash(npx*)", "Bash(uvx *)", "Bash(docker *)", "Bash(docker run*)",
+                     "Bash(docker exec*)", "Bash(npx bash*)", "Bash(uvx python*)", "Bash(docker compose run*)"):
+            self.assertIsNotNone(unsafe_permission(rule), rule)
+        for rule in ("Bash(npx tsc*)", "Bash(npx eslint*)", "Bash(uvx deptry*)", "Bash(uvx vulture*)",
+                     "Bash(uvx pip-audit*)", "Bash(bunx tsc*)", "Bash(docker build*)", "Bash(docker compose config*)"):
+            self.assertIsNone(unsafe_permission(rule), rule)
+
+    def test_missing_tooling_is_withheld_from_verify_until_adopt_kit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            apply_bin = apply_bin_of(kit_with_real_profiles(t, "python"))
+            proj = t / "bare"
+            write(proj / "pyproject.toml", "[project]\nname = 'x'\n")
+            run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python")
+            kj = kit_json(proj)
+            self.assertNotIn("ruff", kj["verify_command"])
+            self.assertNotIn("mypy", kj["verify_command"])
+            self.assertEqual(kj["lint_rules"], [])
+            md = (proj / "CLAUDE.md").read_text(encoding="utf-8")
+            self.assertNotIn("ruff check", md)
+            missing = audit(apply_bin, proj)["missing_tooling"]
+            self.assertTrue(missing)
+            self.assertTrue(all(m["effective"] == "skip" for m in missing))
+
+            ctx = json.dumps({"decisions": {"python": {"linter": "adopt_kit"}}})
+            run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python", "--context", "-", input=ctx)
+            kj = kit_json(proj)
+            self.assertIn("uv run ruff check .", kj["verify_command"])
+            self.assertEqual(kj["lint_rules"][0]["command"][0], "ruff")
+
     def test_audit_reports_missing_tooling_when_no_markers_and_preset_declared(self):
         with tempfile.TemporaryDirectory() as tmp:
             t = Path(tmp)
@@ -414,7 +450,7 @@ class TestToolingConflicts(unittest.TestCase):
             run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "pydemo", "--context", "-", input=ctx)
             kj = kit_json(proj)
             self.assertEqual(kj["format_rules"], [])
-            self.assertEqual(kj["verify_command"], "uv run mypy . && uv run pytest")
+            self.assertEqual(kj["verify_command"], "uv run pytest")  # typechecker is missing too: withheld
             allow = json.loads((proj / ".claude" / "settings.json").read_text(encoding="utf-8"))["permissions"]["allow"]
             self.assertNotIn("Bash(uv run ruff*)", allow)
             self.assertIn("Bash(uv run pytest*)", allow)
@@ -428,6 +464,7 @@ class TestToolingConflicts(unittest.TestCase):
             _, apply_bin = self._kit_with_preset_profile(t, only_when_installed=True)
             proj = t / "proj"
             write(proj / "pyproject.toml", "[project]\nname = 'x'\n")
+            write(proj / "ruff.toml", "line-length = 100\n")
             run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "pydemo")
             self.assertEqual(kit_json(proj)["verify_command"], "uv run ruff check . && uv run pytest")
             allow = json.loads((proj / ".claude" / "settings.json").read_text(encoding="utf-8"))["permissions"]["allow"]
@@ -626,6 +663,9 @@ class TestToolingConflicts(unittest.TestCase):
             proj = t / "proj"
             write(proj / "pyproject.toml", "[project]\nname = 'x'\n")
             run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "pydemo")
+            self.assertEqual(kit_json(proj)["lint_rules"], [])  # missing tool: withheld until adopt_kit
+            run_apply(apply_bin, "decide", "--project", str(proj), "--profile", "pydemo", "--concern", "linter", "--choice", "adopt_kit")
+            run_apply(apply_bin, "sync", "--project", str(proj))
             self.assertEqual(kit_json(proj)["lint_rules"], [{"extensions": [".py"], "command": ["ruff", "check", "--fix", "{file}"]}])
 
             run_apply(apply_bin, "decide", "--project", str(proj), "--profile", "pydemo", "--concern", "linter", "--choice", "skip")
@@ -707,7 +747,7 @@ class TestToolingConflicts(unittest.TestCase):
             write(ts_proj / "pnpm-lock.yaml", "")
             ctx_ts = json.dumps({"decisions": {"typescript": {"linter": "skip", "package-manager": "keep_existing"}}})
             run_apply(apply_bin, "apply", "--project", str(ts_proj), "--profiles", "typescript", "--context", "-", input=ctx_ts)
-            self.assertEqual(kit_json(ts_proj)["verify_command"], "tsc --noEmit && pnpm test && pnpm run build")
+            self.assertEqual(kit_json(ts_proj)["verify_command"], "pnpm exec tsc --noEmit && pnpm test && pnpm run build")
 
             # 2. Python + poetry + linter skipped uses poetry run pytest, never uv run pytest
             py_proj = t / "py-poetry"
@@ -723,7 +763,7 @@ class TestToolingConflicts(unittest.TestCase):
             write(ng_proj / "package.json", json.dumps({"name": "ng-app"}))
             ctx_ng = json.dumps({"decisions": {"angular": {"linter": "skip"}}})
             run_apply(apply_bin, "apply", "--project", str(ng_proj), "--profiles", "angular", "--context", "-", input=ctx_ng)
-            self.assertEqual(kit_json(ng_proj)["verify_command"], "npm test -- --watch=false && npm run build")
+            self.assertEqual(kit_json(ng_proj)["verify_command"], "npm test -- --no-watch && npm run build")
             run_apply(apply_bin, "scaffold-tooling", "--project", str(ng_proj), "--profile", "angular", "--concern", "linter")
             ng_pkg = json.loads((ng_proj / "package.json").read_text(encoding="utf-8"))
             self.assertEqual(ng_pkg["scripts"]["lint"], "eslint .")
@@ -818,10 +858,116 @@ class TestToolingConflicts(unittest.TestCase):
             ts_proj = t / "ts"
             write(ts_proj / "tsconfig.json", "{}")
             write(ts_proj / "pnpm-lock.yaml", "")
-            ctx = json.dumps({"decisions": {"typescript": {"package-manager": "keep_existing"}}})
+            ctx = json.dumps({"decisions": {"typescript": {"package-manager": {"choice": "keep_existing"}}}})
             run_apply(apply_bin, "apply", "--project", str(ts_proj), "--profiles", "typescript", "--context", "-", input=ctx)
             ts_md = (ts_proj / "CLAUDE.md").read_text(encoding="utf-8")
             self.assertIn("pnpm audit", ts_md)
+
+
+class TestRunnerPlaceholder(unittest.TestCase):
+    """The {run} placeholder resolves to the runner of the package manager in effect."""
+
+    @staticmethod
+    def _effective(stack: str, files: dict, decisions: dict | None = None) -> dict:
+        scripts = str(KIT / "skills" / "claude-kit" / "scripts")
+        if scripts not in sys.path:
+            sys.path.insert(0, scripts)
+        from kitlib.core import load_profile
+        from kitlib.tooling import analyze_tooling, effective_profile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = Path(tmp)
+            for name, text in files.items():
+                write(proj / name, text)
+            profile = load_profile(stack)
+            analysis = analyze_tooling(proj, [profile], {stack: decisions or {}})
+            return effective_profile(profile, analysis)
+
+    def test_poetry_with_flake8_uses_poetry_runner(self):
+        eff = self._effective("python", {"pyproject.toml": "[tool.poetry]\n", "poetry.lock": "", ".flake8": "[flake8]\n"})
+        self.assertEqual(eff["commands"]["lint"], "poetry run flake8 .")
+        self.assertEqual(eff["commands"]["verify"], "poetry run flake8 . && poetry run pytest")
+        self.assertIn("Bash(poetry run flake8*)", eff["permissions_allow"])
+
+    def test_poetry_with_mypy_verify_step(self):
+        eff = self._effective("python", {"pyproject.toml": "[tool.poetry]\n[tool.ruff]\n[tool.mypy]\n", "poetry.lock": ""})
+        self.assertEqual(eff["commands"]["verify"], "poetry run ruff check . && poetry run mypy . && poetry run pytest")
+        self.assertIn("Bash(poetry run mypy*)", eff["permissions_allow"])
+        self.assertFalse(any("uv run" in r for r in eff["permissions_allow"]))
+
+    def test_kit_runner_when_nothing_kept(self):
+        eff = self._effective("python", {"pyproject.toml": "[tool.uv]\n[tool.mypy]\n", "uv.lock": ""})
+        self.assertIn("uv run mypy .", eff["commands"]["verify"])
+        self.assertIn("Bash(uv run pytest*)", eff["permissions_allow"])
+        self.assertIn("Bash(uvx deptry*)", eff["permissions_allow"])
+
+    def test_js_runners_per_package_manager(self):
+        expected = {"pnpm-lock.yaml": "pnpm exec", "yarn.lock": "yarn", "bun.lock": "bunx", "package-lock.json": "npx"}
+        for lock, runner in expected.items():
+            with self.subTest(lock=lock):
+                eff = self._effective("typescript", {"tsconfig.json": "{}", lock: ""}, {"package-manager": {"choice": "keep_existing"}})
+                self.assertIn(f"{runner} tsc --noEmit", eff["commands"]["verify"])
+                self.assertIn(f"Bash({runner} tsc*)", eff["permissions_allow"])
+                self.assertIn(f"{runner} knip", eff["commands"]["hygiene"])
+                self.assertFalse(any("{run}" in r for r in eff["permissions_allow"]))
+
+    def test_vue_and_react_vite_keep_runner_in_verify(self):
+        eff = self._effective("vue", {"package.json": "{}", "pnpm-lock.yaml": ""}, {"package-manager": {"choice": "keep_existing"}})
+        self.assertIn("pnpm exec vue-tsc --build", eff["commands"]["verify"])
+        eff = self._effective("react-vite", {"package.json": "{}", "yarn.lock": ""}, {"package-manager": {"choice": "keep_existing"}})
+        self.assertIn("yarn tsc -b", eff["commands"]["verify"])
+
+    def test_profile_without_runner_gets_bare_tool(self):
+        scripts = str(KIT / "skills" / "claude-kit" / "scripts")
+        if scripts not in sys.path:
+            sys.path.insert(0, scripts)
+        from kitlib.tooling import substitute_runner
+
+        self.assertEqual(substitute_runner("{run} flake8 .", None), "flake8 .")
+        self.assertEqual(substitute_runner("Bash({run} flake8*)", None), "Bash(flake8*)")
+        self.assertEqual(substitute_runner(["{run}", "ruff", "{file}"], "uv run"), ["uv", "run", "ruff", "{file}"])
+        self.assertEqual(substitute_runner(["{run}", "ruff", "{file}"], None), ["ruff", "{file}"])
+        eff = self._effective("php", {"composer.json": "{}"})
+        self.assertNotIn("{run}", json.dumps(eff["commands"]))
+
+    def test_no_placeholder_leaks_in_any_real_profile(self):
+        scripts = str(KIT / "skills" / "claude-kit" / "scripts")
+        if scripts not in sys.path:
+            sys.path.insert(0, scripts)
+        from kitlib.core import profile_dirs
+        for folder in profile_dirs():
+            with self.subTest(stack=folder.name):
+                eff = self._effective(folder.name, {})
+                dumped = json.dumps({k: eff.get(k) for k in ("commands", "verify_steps", "permissions_allow", "format_rules", "lint_rules")})
+                self.assertNotIn("{run}", dumped)
+
+    def test_validate_expands_runner_in_permissions(self):
+        scripts = str(KIT / "skills" / "claude-kit" / "scripts")
+        if scripts not in sys.path:
+            sys.path.insert(0, scripts)
+        from kitlib.core import unsafe_permission
+
+        runners = {"uv run", "poetry run", "npx", "bunx", "pnpm exec"}
+        self.assertIsNone(unsafe_permission("Bash({run} flake8*)", runners))
+        self.assertIsNone(unsafe_permission("Bash(npx tsc*)"))
+        self.assertIsNone(unsafe_permission("Bash(uvx deptry*)"))
+        self.assertIsNone(unsafe_permission("Bash(bunx eslint*)"))
+        self.assertIsNone(unsafe_permission("Bash(pnpm exec tsc*)"))
+        self.assertIsNotNone(unsafe_permission("Bash({run} *)", runners))
+        self.assertIsNotNone(unsafe_permission("Bash({run} bash*)", runners))
+        self.assertIsNotNone(unsafe_permission("Bash(npx *)"))
+
+    def test_verify_steps_match_default_verify_in_real_profiles(self):
+        scripts = str(KIT / "skills" / "claude-kit" / "scripts")
+        if scripts not in sys.path:
+            sys.path.insert(0, scripts)
+        from kitlib.core import load_profile, profile_dirs
+        for folder in profile_dirs():
+            p = load_profile(folder.name)
+            if p.get("verify_steps") and p["commands"].get("verify"):
+                with self.subTest(stack=folder.name):
+                    joined = " && ".join(s["cmd"] for s in p["verify_steps"])
+                    self.assertEqual(joined, p["commands"]["verify"])
 
 
 if __name__ == "__main__":

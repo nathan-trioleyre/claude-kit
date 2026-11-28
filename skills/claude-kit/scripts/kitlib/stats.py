@@ -1,5 +1,7 @@
 """`stats`: session token/cost usage and harness block summaries from .claude/logs/."""
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
 

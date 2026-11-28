@@ -1,9 +1,12 @@
 """`scaffold-tooling`: non-destructive linter/formatter preset scaffolding."""
 
+from __future__ import annotations
+
 import json
+import re
 from pathlib import Path
 
-from .core import BASE, emit, _is_unsafe_dest_path, load_kit_json, load_profile, PROFILES, write_text
+from .core import BASE, detect_eol, emit, _is_unsafe_dest_path, load_kit_json, load_profile, PROFILES, read_json, write_text
 from .tooling import analyze_tooling
 from .ci import render_ci_workflow
 
@@ -24,15 +27,21 @@ def _copy_preset_non_destructive(src: Path, dest: Path, label: str, project: Pat
     report.append(f"created   {label}")
 
 
+def _detect_indent(text: str):
+    """Indent unit of a JSON text: a tab, or a number of spaces (2 when undetectable)."""
+    m = re.search(r"^([ \t]+)\S", text, re.MULTILINE)
+    if not m:
+        return 2
+    lead = m.group(1)
+    return "\t" if lead.startswith("\t") else (len(lead) if len(lead) in (2, 4) else 2)
+
+
 def merge_package_json_scripts(pkg_path: Path, scripts: dict, dry: bool, report: list) -> None:
+    """Add missing scripts to package.json, keeping the file's indentation and line endings."""
     if not pkg_path.is_file() or not scripts:
         return
-    try:
-        data = json.loads(pkg_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        raise SystemExit(f"{pkg_path} is not valid JSON: leaving it untouched.")
-    if not isinstance(data, dict):
-        raise SystemExit(f"{pkg_path} must contain a JSON object.")
+    data = read_json(pkg_path, "package.json")
+    raw = pkg_path.read_bytes().decode("utf-8-sig", errors="replace")
     pkg_scripts = data.setdefault("scripts", {})
     if not isinstance(pkg_scripts, dict):
         raise SystemExit(f"{pkg_path} 'scripts' must be a JSON object.")
@@ -40,7 +49,12 @@ def merge_package_json_scripts(pkg_path: Path, scripts: dict, dry: bool, report:
     for k in added:
         pkg_scripts[k] = scripts[k]
     if added:
-        write_text(pkg_path, json.dumps(data, indent=2, ensure_ascii=False) + "\n", dry)
+        eol = detect_eol(raw)
+        text = json.dumps(data, indent=_detect_indent(raw), ensure_ascii=False).replace("\n", eol)
+        if raw.endswith("\n") or not raw.strip():
+            text += eol
+        if not dry:
+            pkg_path.write_bytes(text.encode("utf-8"))
         report.append(f"merged    package.json scripts (+{', '.join(added)})")
 
 

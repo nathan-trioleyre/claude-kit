@@ -1,5 +1,7 @@
 """`detect`: walk a project and match it against known stack profiles."""
 
+from __future__ import annotations
+
 import fnmatch
 import json
 import os

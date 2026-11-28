@@ -1,5 +1,7 @@
 """`list` and `validate`: profile schema, permission and practices.md checks."""
 
+from __future__ import annotations
+
 import json
 import re
 import sys
@@ -79,7 +81,7 @@ def validate_profile_folder(folder: Path) -> list:
             errors.append(f"{folder.name}: 'permissions_allow' must be a list of strings")
         else:
             for rule in perms:
-                reason = unsafe_permission(rule)
+                reason = unsafe_permission(rule, _runners(data.get("tooling")))
                 if reason:
                     errors.append(f"{folder.name}: {reason}")
 
@@ -169,10 +171,27 @@ def _marker_errors(prefix: str, markers) -> list:
     return errors
 
 
-def _perm_errors(prefix: str, rules) -> list:
+def _runners(tooling) -> set:
+    """Every runner prefix declared by the package-manager concern (kit and alternatives)."""
+    found = set()
+    for item in tooling if isinstance(tooling, list) else []:
+        if not isinstance(item, dict) or item.get("concern") != "package-manager":
+            continue
+        entries = [item.get("kit")] + (item.get("alternatives") if isinstance(item.get("alternatives"), list) else [])
+        found.update(e["runner"] for e in entries if isinstance(e, dict) and isinstance(e.get("runner"), str) and e["runner"])
+    return found
+
+
+def _runner_errors(prefix: str, entry: dict) -> list:
+    if "runner" in entry and not (isinstance(entry["runner"], str) and entry["runner"].strip()):
+        return [f"{prefix}.runner must be a non-empty string (e.g. 'uv run', 'npx')"]
+    return []
+
+
+def _perm_errors(prefix: str, rules, runners=()) -> list:
     if not isinstance(rules, list) or not all(isinstance(r, str) for r in rules):
         return [f"{prefix}: permissions must be a list of strings"]
-    return [f"{prefix}: {reason}" for reason in (unsafe_permission(r) for r in rules) if reason]
+    return [f"{prefix}: {reason}" for reason in (unsafe_permission(r, runners) for r in rules) if reason]
 
 
 def _validate_tool_rule(prefix: str, rule, *, check_exec: bool = False) -> list:
@@ -254,6 +273,7 @@ def validate_tooling(name: str, tooling, folder: Path | None = None) -> list:
     if not isinstance(tooling, list):
         return [f"{name}: 'tooling' must be a list"]
     errors, seen = [], set()
+    runners = _runners(tooling)
     for idx, item in enumerate(tooling):
         pre = f"{name}: tooling[{idx}]"
         if not isinstance(item, dict):
@@ -279,7 +299,8 @@ def validate_tooling(name: str, tooling, folder: Path | None = None) -> list:
                 errors.append(f"{pre}.kit.format_rules must be a boolean")
             if not isinstance(kit.get("only_when_installed", False), bool):
                 errors.append(f"{pre}.kit.only_when_installed must be a boolean")
-            errors.extend(_perm_errors(f"{pre}.kit", kit.get("permissions", [])))
+            errors.extend(_runner_errors(f"{pre}.kit", kit))
+            errors.extend(_perm_errors(f"{pre}.kit", kit.get("permissions", []), runners))
             terms = kit.get("practice_terms", [])
             if not isinstance(terms, list) or not all(isinstance(t, str) and t for t in terms):
                 errors.append(f"{pre}.kit.practice_terms must be a list of strings")
@@ -312,7 +333,8 @@ def validate_tooling(name: str, tooling, folder: Path | None = None) -> list:
             acmds = alt.get("commands", {})
             if not isinstance(acmds, dict) or any(k not in COMMAND_LABELS or not isinstance(v, str) for k, v in acmds.items()):
                 errors.append(f"{apre}.commands must map command keys to strings")
-            errors.extend(_perm_errors(apre, alt.get("permissions_allow", [])))
+            errors.extend(_runner_errors(apre, alt))
+            errors.extend(_perm_errors(apre, alt.get("permissions_allow", []), runners))
             rule = alt.get("format_rule")
             if rule is not None:
                 errors.extend(_validate_tool_rule(f"{apre}.format_rule", rule))

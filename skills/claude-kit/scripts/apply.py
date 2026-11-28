@@ -10,20 +10,26 @@ Subcommands:
   doctor    reports drift between a project and the current kit (exit 1 if issues)
   audit     inventories what a project already has (CLAUDE.md, hooks, tooling) and lists
             conflicts between the project's tools and the kit's (JSON on stdout, read-only)
-  decide    records how a tooling conflict is resolved (keep_existing | adopt_kit | keep_both)
+  decide    records how a tooling conflict is resolved (keep_existing | adopt_kit | keep_both | skip)
+  uninstall removes what the kit added (unmodified managed files, kit hooks/permissions, ignore
+            lines, kit.json); never deletes CLAUDE.md / rules files (--dry-run to preview)
   validate  validates profile.json schema and practices.md constraints
   scaffold-tooling  scaffolds missing linter/formatter preset files non-destructively
   codemap   generates a compact project codemap
   stats     summarizes session tokens/costs and harness blocks
 
 This file is only the CLI entry point; the logic lives in the sibling `kitlib/` package
-(core, validate, detect, settings, tooling, render, codemap, stats, ci, scaffold, project).
+(core, validate, detect, settings, preflight, ignore, tooling, render, codemap, stats, ci,
+scaffold, project, doctor, audit, uninstall).
 
 Layers (later layers add to earlier ones, never remove): base -> org -> stack profiles -> project.
 
 Safety rules:
   - an existing CLAUDE.md or .claude/rules/<stack>.md is never overwritten (.proposed)
-  - existing settings.json: additive merge (legacy kit hooks upgraded safely)
+  - existing settings.json: additive merge (legacy kit hooks upgraded safely), previous version
+    saved as settings.json.bak; every JSON input is validated before anything is written
+  - tooling the project lacks (no ruff in a Python project...) is withheld from commands and the
+    Stop-hook verify chain until adopt_kit is recorded
   - a hook file is upgraded only if it is unmodified since the kit installed it
   - a tool the project already uses (e.g. black vs the kit's ruff) is never overridden silently:
     until a decision is recorded, the kit withholds its overlapping rules
@@ -31,6 +37,8 @@ Safety rules:
 
 No external dependencies: Python 3.9+ is sufficient.
 """
+
+from __future__ import annotations
 
 import argparse
 import sys
@@ -41,7 +49,10 @@ from kitlib.detect import cmd_detect
 from kitlib.codemap import cmd_codemap
 from kitlib.stats import cmd_stats
 from kitlib.scaffold import cmd_scaffold_tooling
-from kitlib.project import cmd_apply, cmd_audit, cmd_decide, cmd_doctor, cmd_sync
+from kitlib.project import cmd_apply, cmd_decide, cmd_sync
+from kitlib.doctor import cmd_doctor
+from kitlib.audit import cmd_audit
+from kitlib.uninstall import cmd_uninstall
 
 
 def main() -> None:
@@ -89,6 +100,11 @@ def main() -> None:
     p_decide.add_argument("--choice", required=True, choices=DECISION_CHOICES)
     p_decide.add_argument("--dry-run", action="store_true")
     p_decide.set_defaults(func=cmd_decide)
+
+    p_uninstall = sub.add_parser("uninstall", help="remove what the kit added to a project (keeps CLAUDE.md and modified files)")
+    p_uninstall.add_argument("--project", default=".")
+    p_uninstall.add_argument("--dry-run", action="store_true")
+    p_uninstall.set_defaults(func=cmd_uninstall)
 
     p_scaffold = sub.add_parser("scaffold-tooling", help="scaffold missing linter/formatter preset files non-destructively")
     p_scaffold.add_argument("--project", default=".")

@@ -1,18 +1,61 @@
 """settings.json: build the wanted settings (base + org + profiles) and merge additively."""
 
+from __future__ import annotations
+
 import json
+import re
 from pathlib import Path
 
-from .core import BASE, ORG, write_text
+from .core import backup_file, BASE, ORG, read_json, write_text
+
+KIT_HOOK_SCRIPTS = ("guard.py", "format.py", "session-check.py", "verify-stop.py")
+_HOOK_SCRIPT_RE = re.compile(r"^\s*HOOK_SCRIPT=([\w.-]+)\s*;")
+_HOOK_PATH_RE = re.compile(r"(?:^|/)\.claude/hooks/(" + "|".join(re.escape(s) for s in KIT_HOOK_SCRIPTS) + r")$")
 
 
 def _kit_hook_tag(command: str) -> str | None:
-    if ".claude/hooks/" not in command:
-        return None
-    for script in ("guard.py", "format.py", "session-check.py", "verify-stop.py"):
-        if script in command:
-            return script
+    """Name of the kit script a hook command runs, or None. Exact matches only (my-guard.py is not guard.py)."""
+    m = _HOOK_SCRIPT_RE.match(command)
+    if m:
+        return m.group(1) if m.group(1) in KIT_HOOK_SCRIPTS else None
+    for token in re.findall(r"[^\s\"']+", command):
+        m = _HOOK_PATH_RE.search(token.replace("\\", "/"))
+        if m:
+            return m.group(1)
     return None
+
+
+def validate_settings_shape(data, label: str) -> None:
+    """Abort (SystemExit) if a parsed settings file has a shape the merge cannot handle."""
+    def bad(what: str):
+        raise SystemExit(f"{label}: {what}. Fix it and re-run (nothing was written).")
+
+    if not isinstance(data, dict):
+        bad("top level must be a JSON object")
+    perms = data.get("permissions")
+    if "permissions" in data and not isinstance(perms, dict):
+        bad("'permissions' must be an object")
+    for key in ("allow", "deny"):
+        rules = (perms or {}).get(key)
+        if key in (perms or {}) and (not isinstance(rules, list) or not all(isinstance(r, str) for r in rules)):
+            bad(f"'permissions.{key}' must be a list of strings")
+    if "hooks" in data and not isinstance(data["hooks"], dict):
+        bad("'hooks' must be an object")
+    for event, groups in (data.get("hooks") or {}).items():
+        if not isinstance(groups, list):
+            bad(f"'hooks.{event}' must be a list")
+        for group in groups:
+            if not isinstance(group, dict):
+                bad(f"'hooks.{event}' entries must be objects")
+            hooks = group.get("hooks")
+            if "hooks" in group and (not isinstance(hooks, list) or not all(isinstance(h, dict) for h in hooks)):
+                bad(f"'hooks.{event}[].hooks' must be a list of objects")
+
+
+def read_settings(path: Path, label: str) -> dict:
+    data = read_json(path, label)
+    validate_settings_shape(data, f"{path}")
+    return data
 
 
 def merge_settings(existing: dict, wanted: dict):
@@ -71,15 +114,12 @@ def load_org_settings() -> dict:
     f = ORG / "settings.json"
     if not f.is_file():
         return {}
-    try:
-        return json.loads(f.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        raise SystemExit(f"{f} is not valid JSON.")
+    return read_json(f, "org/settings.json")
 
 
 def build_wanted_settings(profiles: list, use_org: bool = True) -> dict:
     """Layer settings: base -> org -> stack profiles (always additive)."""
-    wanted = json.loads((BASE / "settings.base.json").read_text(encoding="utf-8"))
+    wanted = read_json(BASE / "settings.base.json", "base/settings.base.json")
     allow = wanted["permissions"]["allow"]
     deny = wanted["permissions"]["deny"]
     if use_org:
@@ -103,22 +143,28 @@ def read_org_text(name: str) -> str:
 
 
 def apply_settings(project: Path, profiles: list, dry: bool, report: list, use_org: bool,
-                   local: bool = False) -> None:
+                   local: bool = False) -> dict:
+    """Create or merge settings(.local).json. Returns the permission rules the kit added ({allow, deny})."""
     rel_name = ".claude/settings.local.json" if local else ".claude/settings.json"
     settings_path = project / rel_name
     wanted = build_wanted_settings(profiles, use_org)
+    added = {"allow": [], "deny": []}
     if settings_path.exists():
-        try:
-            existing = json.loads(settings_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            raise SystemExit(f"{settings_path} is not valid JSON: leaving it untouched. Fix it and re-run.")
+        existing = read_settings(settings_path, rel_name)
         merged, changes = merge_settings(existing, wanted)
         if changes:
+            backup_file(settings_path, dry)
             write_text(settings_path, json.dumps(merged, indent=2, ensure_ascii=False) + "\n", dry)
-            report.append(f"merged    {rel_name} (+{len(changes)} updates)")
+            report.append(f"merged    {rel_name} (+{len(changes)} updates; previous version kept as {rel_name}.bak)")
             report.extend(f"           + {c}" for c in changes)
+            for key in added:
+                prefix = f"permissions.{key}: "
+                added[key] = [c[len(prefix):] for c in changes if c.startswith(prefix)]
         else:
             report.append(f"unchanged {rel_name} (already up to date)")
     else:
         write_text(settings_path, json.dumps(wanted, indent=2, ensure_ascii=False) + "\n", dry)
         report.append(f"created   {rel_name}")
+        for key in added:
+            added[key] = list(wanted["permissions"].get(key, []))
+    return added

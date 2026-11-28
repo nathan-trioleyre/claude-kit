@@ -421,7 +421,7 @@ class TestApply(unittest.TestCase):
             run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "angular", "--context", "-", input=ctx)
 
             claude_md = (proj / "CLAUDE.md").read_text(encoding="utf-8")
-            self.assertIn("Angular (Angular CLI + npm) (v11.2)", claude_md)
+            self.assertIn("Angular (Angular CLI) (v11.2)", claude_md)
             self.assertIn("Angular 11: use `NgModule`", claude_md)
             self.assertNotIn("Angular 21+:", claude_md)
             kj = json.loads((proj / ".claude" / "kit.json").read_text(encoding="utf-8"))
@@ -448,7 +448,7 @@ class TestApply(unittest.TestCase):
             self.assertTrue((proj2 / ".mcp.json").is_file())
             self.assertIn(".mcp.json", (proj2 / ".git" / "info" / "exclude").read_text(encoding="utf-8"))
 
-    def test_memory_md_stop_verify_default_and_doctor_audits(self):
+    def test_no_root_memory_md_stop_verify_default_and_doctor_audits(self):
         with tempfile.TemporaryDirectory() as tmp:
             _, apply_bin, proj = self._kit_and_project(tmp)
             ctx = json.dumps({
@@ -457,21 +457,20 @@ class TestApply(unittest.TestCase):
                 "architecture": "- src/",
                 "gotchas": "- None",
             })
-            run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python", "--context", "-", input=ctx)
+            out = run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python", "--context", "-", input=ctx).stdout
 
-            # MEMORY.md created with expected sections, stop_verify enabled by default
-            mem = proj / "MEMORY.md"
-            self.assertTrue(mem.is_file())
-            mem_text = mem.read_text(encoding="utf-8")
-            self.assertIn("## Decisions", mem_text)
-            self.assertIn("## Active WIP", mem_text)
-            self.assertIn("## Known Issues", mem_text)
+            # No root MEMORY.md is generated any more; stop_verify stays enabled by default
+            self.assertFalse((proj / "MEMORY.md").exists())
+            self.assertNotIn("MEMORY.md", out)
             kj = json.loads((proj / ".claude" / "kit.json").read_text(encoding="utf-8"))
             self.assertTrue(kj["stop_verify"])
 
-            # Existing MEMORY.md is never overwritten on re-run
-            mem.write_text("# Project Memory\n- [2020-01-01] old decision\n" + "\n".join(f"- line {i}" for i in range(155)), encoding="utf-8")
+            # An existing user MEMORY.md is never touched, deleted or audited
+            mem = proj / "MEMORY.md"
+            mem_text = "# Project Memory\n- [2020-01-01] old decision\n" + "\n".join(f"- line {i}" for i in range(155))
+            mem.write_text(mem_text, encoding="utf-8")
             run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python", "--context", "-", input=json.dumps({"stop_verify": False}))
+            self.assertEqual(mem.read_text(encoding="utf-8"), mem_text)
             self.assertFalse((proj / "MEMORY.md.proposed").exists())
             kj2 = json.loads((proj / ".claude" / "kit.json").read_text(encoding="utf-8"))
             self.assertFalse(kj2["stop_verify"])
@@ -487,9 +486,8 @@ class TestApply(unittest.TestCase):
             doc = run_apply(apply_bin, "doctor", "--project", str(proj), check=False)
             self.assertEqual(doc.returncode, 1)
             self.assertIn("recommended <= 80", doc.stdout)
-            self.assertIn("warning threshold 150", doc.stdout)
-            self.assertIn("older than 30 days", doc.stdout)
             self.assertIn("harness.log shows 4x blocks", doc.stdout)
+            self.assertNotIn("MEMORY", doc.stdout)
 
     def test_apply_syncs_base_skills_without_copying_base_presets(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -572,6 +570,299 @@ class TestApply(unittest.TestCase):
     def test_precommit_template_supports_gitleaks(self):
         pre_commit = (KIT / "base" / "presets" / "pre-commit.template").read_text(encoding="utf-8")
         self.assertIn("gitleaks", pre_commit)
+
+
+class TestEngineHardening(unittest.TestCase):
+    """Regression tests for the engine's robustness fixes (JSON handling, EOLs, worktrees, uninstall...)."""
+
+    def _kit_and_project(self, tmp):
+        t = Path(tmp)
+        kit = t / "kit"
+        copy_kit(kit)
+        make_profile(kit, "python")
+        proj = t / "proj"
+        proj.mkdir()
+        return kit, kit / "skills" / "claude-kit" / "scripts" / "apply.py", proj
+
+    @staticmethod
+    def _kitlib():
+        scripts = str(KIT / "skills" / "claude-kit" / "scripts")
+        if scripts not in sys.path:
+            sys.path.insert(0, scripts)
+
+    def _apply(self, apply_bin, proj, *extra, check=True):
+        return run_apply(apply_bin, "apply", "--project", str(proj), "--profiles", "python", *extra, check=check)
+
+    def test_legacy_hook_upgrade_keeps_user_hooks_with_similar_names(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, apply_bin, proj = self._kit_and_project(tmp)
+            commands = ["python .claude/hooks/my-guard.py", "node prettier-format.py",
+                        'python3 "$CLAUDE_PROJECT_DIR/.claude/hooks/prettier-format.py"',
+                        'python "$CLAUDE_PROJECT_DIR/.claude/hooks/guard.py"']
+            (proj / ".claude").mkdir()
+            (proj / ".claude" / "settings.json").write_text(json.dumps({"hooks": {"PreToolUse": [
+                {"matcher": "Bash", "hooks": [{"type": "command", "command": c}]} for c in commands]}}), encoding="utf-8")
+            self._apply(apply_bin, proj)
+            data = json.loads((proj / ".claude" / "settings.json").read_text(encoding="utf-8"))
+            found = [h["command"] for g in data["hooks"]["PreToolUse"] for h in g["hooks"]]
+            for kept in commands[:3]:
+                self.assertIn(kept, found)
+            self.assertNotIn(commands[3], found)  # the real legacy kit hook was upgraded
+            self.assertTrue(any("HOOK_SCRIPT=guard.py;" in c for c in found))
+
+    def test_corrupt_kit_json_aborts_without_writing_and_bom_is_accepted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, apply_bin, proj = self._kit_and_project(tmp)
+            self._apply(apply_bin, proj, "--local")
+            kit_file = proj / ".claude" / "kit.json"
+            good = kit_file.read_text(encoding="utf-8")
+
+            kit_file.write_text(good[:-20], encoding="utf-8")  # truncated JSON
+            (proj / "CLAUDE.local.md").unlink()
+            res = run_apply(apply_bin, "sync", "--project", str(proj), check=False)
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("kit.json", res.stdout + res.stderr)
+            self.assertNotIn("Traceback", res.stderr)
+            self.assertFalse((proj / "CLAUDE.md").exists())
+            self.assertFalse((proj / ".gitignore").exists())
+
+            kit_file.write_bytes(b"\xef\xbb\xbf" + good.encode("utf-8"))  # BOM: local flag must survive
+            run_apply(apply_bin, "sync", "--project", str(proj))
+            self.assertFalse((proj / ".gitignore").exists())
+            self.assertTrue(json.loads(kit_file.read_text(encoding="utf-8"))["local"])
+
+    def test_local_exclude_for_worktree_and_warning_without_git(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            _, apply_bin, proj = self._kit_and_project(tmp)
+            common = t / "main" / ".git"
+            (common / "worktrees" / "wt").mkdir(parents=True)
+            (common / "worktrees" / "wt" / "commondir").write_text("../..\n", encoding="utf-8")
+            (proj / ".git").write_text(f"gitdir: {common / 'worktrees' / 'wt'}\n", encoding="utf-8")
+            self._apply(apply_bin, proj, "--local")
+            exclude = (common / "info" / "exclude").read_text(encoding="utf-8")
+            self.assertIn("CLAUDE.local.md", exclude)
+            self.assertIn(".claude/handoff.md", exclude)
+
+            proj2 = t / "nogit"
+            proj2.mkdir()
+            out = self._apply(apply_bin, proj2, "--local").stdout
+            self.assertIn("WARNING", out)
+            self.assertIn("cannot be hidden", out)
+
+    def test_wrong_shape_settings_abort_before_any_write_in_apply_and_doctor(self):
+        shapes = [[], {"permissions": None}, {"permissions": {"allow": "x"}}, {"hooks": []},
+                  {"hooks": {"PreToolUse": [{"hooks": None}]}}]
+        for shape in shapes:
+            with self.subTest(shape=shape), tempfile.TemporaryDirectory() as tmp:
+                _, apply_bin, proj = self._kit_and_project(tmp)
+                (proj / ".claude").mkdir()
+                (proj / ".claude" / "settings.json").write_text(json.dumps(shape), encoding="utf-8")
+                res = self._apply(apply_bin, proj, check=False)
+                self.assertNotEqual(res.returncode, 0)
+                self.assertNotIn("Traceback", res.stderr)
+                self.assertFalse((proj / "CLAUDE.md").exists())
+                self.assertFalse((proj / ".claude" / "kit.json").exists())
+                self.assertFalse((proj / ".gitignore").exists())
+                # doctor on a configured project whose settings later became malformed
+                (proj / ".claude" / "settings.json").unlink()
+                self._apply(apply_bin, proj)
+                (proj / ".claude" / "settings.json").write_text(json.dumps(shape), encoding="utf-8")
+                doc = run_apply(apply_bin, "doctor", "--project", str(proj), check=False)
+                self.assertNotEqual(doc.returncode, 0)
+                self.assertNotIn("Traceback", doc.stderr)
+
+    def test_wrong_shape_mcp_json_aborts_cleanly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, apply_bin, proj = self._kit_and_project(tmp)
+            (proj / ".mcp.json").write_text('{"mcpServers": []}', encoding="utf-8")
+            res = self._apply(apply_bin, proj, check=False)
+            self.assertNotEqual(res.returncode, 0)
+            self.assertNotIn("Traceback", res.stderr)
+            self.assertFalse((proj / "CLAUDE.md").exists())
+
+    def test_context_from_stdin_is_read_as_utf8(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, apply_bin, proj = self._kit_and_project(tmp)
+            payload = json.dumps({"name": "Café", "description": "Résumé de l'app — ünïcode"}, ensure_ascii=False)
+            res = subprocess.run([sys.executable, str(apply_bin), "apply", "--project", str(proj), "--profiles", "python",
+                                  "--context", "-"], input=b"\xef\xbb\xbf" + payload.encode("utf-8"), capture_output=True)
+            self.assertEqual(res.returncode, 0, res.stderr)
+            md = (proj / "CLAUDE.md").read_text(encoding="utf-8")
+            self.assertIn("# Café", md)
+            self.assertIn("Résumé de l'app — ünïcode", md)
+
+    def test_ignore_files_keep_crlf_and_get_handoff_and_bak_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, apply_bin, proj = self._kit_and_project(tmp)
+            original = b"node_modules\r\ndist\r\n"
+            (proj / ".gitignore").write_bytes(original)
+            self._apply(apply_bin, proj)
+            raw = (proj / ".gitignore").read_bytes()
+            self.assertTrue(raw.startswith(original))
+            self.assertNotIn(b"\n", raw.replace(b"\r\n", b""))  # no bare LF anywhere
+            text = raw.decode("utf-8")
+            for line in (".claude/handoff.md", ".claude/settings.json.bak", ".claude/settings.local.json.bak"):
+                self.assertIn(line + "\r\n", text)
+
+            proj2 = Path(tmp) / "local"
+            (proj2 / ".git" / "info").mkdir(parents=True)
+            (proj2 / ".git" / "info" / "exclude").write_bytes(b"*.log\r\n")
+            self._apply(apply_bin, proj2, "--local")
+            raw2 = (proj2 / ".git" / "info" / "exclude").read_bytes()
+            self.assertTrue(raw2.startswith(b"*.log\r\n"))
+            self.assertNotIn(b"\n", raw2.replace(b"\r\n", b""))
+            self.assertIn(b".claude/handoff.md", raw2)
+            self.assertFalse((proj2 / "MEMORY.md").exists())
+
+    def test_no_memory_template_is_shipped(self):
+        self.assertFalse((KIT / "base" / "MEMORY.md.template").exists())
+
+    def test_package_json_merge_keeps_indent_and_eol(self):
+        self._kitlib()
+        from kitlib.scaffold import merge_package_json_scripts
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg = Path(tmp) / "package.json"
+            pkg.write_bytes(b'{\r\n\t"name": "x",\r\n\t"scripts": {\r\n\t\t"test": "jest"\r\n\t}\r\n}\r\n')
+            merge_package_json_scripts(pkg, {"lint": "eslint ."}, False, [])
+            self.assertEqual(pkg.read_bytes(), b'{\r\n\t"name": "x",\r\n\t"scripts": {\r\n\t\t"test": "jest",\r\n\t\t"lint": "eslint ."\r\n\t}\r\n}\r\n')
+            pkg.write_text('{\n    "name": "x"\n}\n', encoding="utf-8", newline="\n")
+            merge_package_json_scripts(pkg, {"lint": "eslint ."}, False, [])
+            self.assertEqual(pkg.read_bytes(), b'{\n    "name": "x",\n    "scripts": {\n        "lint": "eslint ."\n    }\n}\n')
+
+    def test_non_utf8_claude_md_is_never_rewritten_and_does_not_crash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, apply_bin, proj = self._kit_and_project(tmp)
+            original = "# Projet\nCafé notes\n".encode("cp1252")
+            (proj / "CLAUDE.md").write_bytes(original)
+            self._apply(apply_bin, proj)
+            self.assertEqual((proj / "CLAUDE.md").read_bytes(), original)
+            doc = run_apply(apply_bin, "doctor", "--project", str(proj), check=False)
+            self.assertNotIn("Traceback", doc.stderr)
+
+    def test_foreign_hooks_and_rule_file_yaml_are_robust(self):
+        self._kitlib()
+        from kitlib.render import render_rule_file
+        from kitlib.tooling import foreign_hooks
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = Path(tmp)
+            (proj / ".claude").mkdir()
+            (proj / ".claude" / "settings.json").write_text(json.dumps({"hooks": {"Stop": [
+                {"hooks": None}, {"hooks": [{"type": "command", "command": "echo hi"}]}]}}), encoding="utf-8")
+            self.assertEqual([h["command"] for h in foreign_hooks(proj)], ["echo hi"])
+        text = render_rule_file({"stack": "x", "_practices": "- a"}, ['src/"odd"/**', "back\\slash/**"])
+        self.assertIn('  - "src/\\"odd\\"/**"', text)
+        self.assertIn('  - "back\\\\slash/**"', text)
+
+    def test_detection_skips_build_vendor_and_cache_dirs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            kit = t / "kit"
+            copy_kit(kit)
+            make_profile(kit, "python")
+            proj = t / "proj"
+            for d in ("build", "out", "coverage", ".tox", "vendor", ".mypy_cache", ".pytest_cache", ".ruff_cache"):
+                (proj / d / "pkg").mkdir(parents=True)
+                (proj / d / "pkg" / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+            out = subprocess.check_output([sys.executable, str(kit / "skills" / "claude-kit" / "scripts" / "apply.py"),
+                                           "detect", "--project", str(proj)], text=True)
+            self.assertEqual(json.loads(out)["matched"], [])
+
+    def test_crlf_checkouts_do_not_look_modified(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, apply_bin, proj = self._kit_and_project(tmp)
+            self._apply(apply_bin, proj)
+            run_apply(apply_bin, "sync", "--project", str(proj))  # settle the codemap (the first one predates CLAUDE.md)
+            for rel in (".claude/hooks/guard.py", ".claude/codemap.md"):
+                path = proj / rel
+                path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+            out = run_apply(apply_bin, "sync", "--project", str(proj)).stdout
+            self.assertNotIn("skipped", out)
+            self.assertIn("unchanged .claude/hooks/guard.py", out)
+            self.assertIn("unchanged .claude/codemap.md", out)
+            doc = run_apply(apply_bin, "doctor", "--project", str(proj), check=False).stdout
+            self.assertNotIn("guard.py modified locally", doc)
+
+    def test_every_kitlib_module_postpones_annotations(self):
+        for path in sorted((KIT / "skills" / "claude-kit" / "scripts" / "kitlib").glob("*.py")):
+            if path.name == "__init__.py":
+                continue
+            self.assertIn("from __future__ import annotations", path.read_text(encoding="utf-8"), path.name)
+
+    def test_settings_backup_is_written_before_merge_but_not_in_dry_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, apply_bin, proj = self._kit_and_project(tmp)
+            (proj / ".claude").mkdir()
+            original = json.dumps({"permissions": {"allow": ["Read"]}, "model": "x"}, indent=4)
+            settings = proj / ".claude" / "settings.json"
+            settings.write_text(original, encoding="utf-8")
+            self._apply(apply_bin, proj, "--dry-run")
+            self.assertFalse((proj / ".claude" / "settings.json.bak").exists())
+            self.assertEqual(settings.read_text(encoding="utf-8"), original)
+            self._apply(apply_bin, proj)
+            self.assertEqual((proj / ".claude" / "settings.json.bak").read_text(encoding="utf-8"), original)
+            self.assertNotEqual(settings.read_text(encoding="utf-8"), original)
+
+    def test_sync_dry_run_lists_modified_hooks_with_a_diff(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            kit, apply_bin, proj = self._kit_and_project(tmp)
+            self._apply(apply_bin, proj)
+            hook = proj / ".claude" / "hooks" / "guard.py"
+            hook.write_text(hook.read_text(encoding="utf-8") + "\n# mine\n", encoding="utf-8")
+            src = kit / "base" / "hooks" / "guard.py"
+            src.write_text(src.read_text(encoding="utf-8") + "\n# kit change\n", encoding="utf-8")
+            out = run_apply(apply_bin, "sync", "--project", str(proj), "--dry-run").stdout
+            self.assertIn("modified locally were NOT updated: .claude/hooks/guard.py", out)
+            self.assertIn("-# mine", out)
+            self.assertIn("+# kit change", out)
+            out2 = run_apply(apply_bin, "sync", "--project", str(proj), "--force-hooks").stdout
+            self.assertIn("forced", out2)
+
+    def test_uninstall_normal_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, apply_bin, proj = self._kit_and_project(tmp)
+            (proj / ".gitignore").write_bytes(b"node_modules\r\n")
+            (proj / ".claude").mkdir()
+            (proj / ".claude" / "settings.json").write_text(json.dumps({
+                "permissions": {"allow": ["Bash(make *)"]},
+                "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "echo mine"}]}]}}), encoding="utf-8")
+            self._apply(apply_bin, proj)
+            hook = proj / ".claude" / "hooks" / "format.py"
+            hook.write_text(hook.read_text(encoding="utf-8") + "\n# mine\n", encoding="utf-8")
+
+            dry = run_apply(apply_bin, "uninstall", "--project", str(proj), "--dry-run").stdout
+            self.assertIn("DRY-RUN", dry)
+            self.assertTrue((proj / ".claude" / "kit.json").exists())
+
+            out = run_apply(apply_bin, "uninstall", "--project", str(proj)).stdout
+            self.assertIn("kept      .claude/hooks/format.py", out)
+            self.assertIn("left      CLAUDE.md", out)
+            self.assertFalse((proj / ".claude" / "kit.json").exists())
+            self.assertFalse((proj / ".claude" / "hooks" / "guard.py").exists())
+            self.assertTrue(hook.exists())  # modified: kept
+            self.assertTrue((proj / "CLAUDE.md").exists())
+            settings = json.loads((proj / ".claude" / "settings.json").read_text(encoding="utf-8"))
+            self.assertEqual(settings["permissions"]["allow"], ["Bash(make *)"])
+            self.assertNotIn("deny", settings["permissions"])
+            self.assertEqual(settings["hooks"], {"Stop": [{"hooks": [{"type": "command", "command": "echo mine"}]}]})
+            self.assertEqual((proj / ".gitignore").read_bytes(), b"node_modules\r\n")
+
+    def test_uninstall_local_mode_removes_exclude_block_and_settings_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, apply_bin, proj = self._kit_and_project(tmp)
+            (proj / ".git" / "info").mkdir(parents=True)
+            exclude = proj / ".git" / "info" / "exclude"
+            exclude.write_text("*.log\n", encoding="utf-8")
+            self._apply(apply_bin, proj, "--local")
+            self.assertIn("CLAUDE.local.md", exclude.read_text(encoding="utf-8"))
+            out = run_apply(apply_bin, "uninstall", "--project", str(proj)).stdout
+            self.assertEqual(exclude.read_text(encoding="utf-8"), "*.log\n")
+            self.assertFalse((proj / ".claude" / "settings.local.json").exists())
+            self.assertIn("left      CLAUDE.local.md", out)
+            self.assertTrue((proj / "CLAUDE.local.md").exists())
+            self.assertFalse((proj / ".claude" / "hooks").exists())
+            res = run_apply(apply_bin, "uninstall", "--project", str(proj), check=False)
+            self.assertNotEqual(res.returncode, 0)  # nothing left to uninstall
 
 
 if __name__ == "__main__":

@@ -1,11 +1,13 @@
 """Existing-tooling analysis: conflicts between project tools and profile tools, and decisions."""
 
+from __future__ import annotations
+
 import json
 import re
 from datetime import date
 from pathlib import Path
 
-from .core import COMMAND_KEYS_NEEDING_VERIFY, DECISION_CHOICES, MAX_MARKER_BYTES
+from .core import COMMAND_KEYS_NEEDING_VERIFY, DECISION_CHOICES, MAX_MARKER_BYTES, read_json
 from .detect import collect_project_files, file_matches
 from .settings import _kit_hook_tag
 
@@ -43,14 +45,16 @@ def foreign_hooks(project: Path) -> list:
         if not f.is_file():
             continue
         try:
-            hooks = json.loads(f.read_text(encoding="utf-8")).get("hooks") or {}
-        except (OSError, json.JSONDecodeError, AttributeError):
-            continue
+            data = read_json(f, name, expect=None)
+        except SystemExit:
+            continue  # unreadable settings are reported by the preflight, not here
+        hooks = (data.get("hooks") if isinstance(data, dict) else None) or {}
         for event, groups in hooks.items() if isinstance(hooks, dict) else []:
             for group in groups if isinstance(groups, list) else []:
-                for hook in group.get("hooks", []) if isinstance(group, dict) else []:
+                group_hooks = group.get("hooks") if isinstance(group, dict) else None
+                for hook in group_hooks if isinstance(group_hooks, list) else []:
                     cmd = hook.get("command", "") if isinstance(hook, dict) else ""
-                    if cmd and _kit_hook_tag(cmd) is None:
+                    if isinstance(cmd, str) and cmd and _kit_hook_tag(cmd) is None:
                         found.append({"file": name, "event": event, "command": cmd})
     return found
 
@@ -69,6 +73,8 @@ def analyze_tooling(project: Path, profiles: list, decisions: dict) -> list:
             | pending (competing tool, no decision yet: the kit holds back)
             | resolved (user decided) | migration_pending (kit adopted but traces of the old tool remain)
     effective: what the kit actually applies (adopt_kit | keep_existing | keep_both | skip).
+    A "missing" concern is withheld (effective skip) until adopt_kit is recorded: the kit never
+    puts a command in the lint/verify chain for a tool the project does not have.
     """
     rel_files = collect_project_files(project)
     hooks = foreign_hooks(project)
@@ -92,7 +98,8 @@ def analyze_tooling(project: Path, profiles: list, decisions: dict) -> list:
                     status, effective = "resolved", "skip"
                 elif not kit_evidence and has_preset:
                     status = "missing"
-                    effective = "skip" if only_installed else "adopt_kit"
+                    adopted = bool(recorded) and recorded["choice"] in ("adopt_kit", "keep_both")
+                    effective = "adopt_kit" if adopted else "skip"
                 elif only_installed and not kit_evidence:
                     status, effective = "none", "skip"
                 else:
@@ -110,7 +117,58 @@ def analyze_tooling(project: Path, profiles: list, decisions: dict) -> list:
     return results
 
 
+RUNNER_PLACEHOLDER = "{run}"
+_RUNNER_KEYS = ("commands", "verify_steps", "permissions_allow", "format_rules", "lint_rules")
+
+
+def substitute_runner(obj, runner: str | None):
+    """Replace the {run} placeholder in strings (and as a whole argv token) with the runner prefix.
+
+    With no runner the placeholder and the space after it are dropped (bare tool invocation).
+    """
+    if isinstance(obj, str):
+        if RUNNER_PLACEHOLDER not in obj:
+            return obj
+        return obj.replace(RUNNER_PLACEHOLDER, runner) if runner else re.sub(r"\{run\}\s*", "", obj)
+    if isinstance(obj, list):
+        out = []
+        for x in obj:
+            if x == RUNNER_PLACEHOLDER:
+                out.extend((runner or "").split())  # argv list: the runner becomes leading tokens
+            else:
+                out.append(substitute_runner(x, runner))
+        return out
+    if isinstance(obj, dict):
+        return {k: substitute_runner(v, runner) for k, v in obj.items()}
+    return obj
+
+
+def effective_runner(profile: dict, analysis: list) -> str | None:
+    """Runner prefix of the package manager in effect (kit's, or the kept alternative's), if any."""
+    item = next((i for i in profile.get("tooling", []) if i["concern"] == "package-manager"), None)
+    if not item:
+        return None
+    a = next((x for x in analysis if x["stack"] == profile["stack"] and x["concern"] == "package-manager"), None)
+    if a and a["effective"] == "keep_existing" and a["existing"]:
+        alt = next((x for x in item.get("alternatives", []) if x["name"] == a["existing"][0]["name"]), None)
+        return (alt or {}).get("runner")
+    return item["kit"].get("runner")
+
+
 def effective_profile(profile: dict, analysis: list) -> dict:
+    """Profile as it must be applied: tooling decisions taken into account, then {run} resolved."""
+    eff = _apply_decisions(profile, analysis)
+    if RUNNER_PLACEHOLDER not in json.dumps({k: eff.get(k) for k in _RUNNER_KEYS}):
+        return eff
+    runner = effective_runner(profile, analysis)
+    out = dict(eff)
+    for k in _RUNNER_KEYS:
+        if k in out:
+            out[k] = substitute_runner(out[k], runner)
+    return out
+
+
+def _apply_decisions(profile: dict, analysis: list) -> dict:
     """Profile as it must be applied once tooling decisions are taken into account.
 
     For every concern kept as-is or skipped: the kit's overlapping commands, formatting rule,
@@ -158,6 +216,7 @@ def effective_profile(profile: dict, analysis: list) -> dict:
     # Process package-manager first so kept formatter/linter rules take precedence over its defaults.
     ordered_kept = sorted(kept, key=lambda a: 0 if a["concern"] == "package-manager" else 1)
     pm_verify_override = False
+    keep_notes = []  # appended after the skipped concerns strip their terms, so the notes survive
     for a in ordered_kept:
         item = items[a["concern"]]
         kit = item["kit"]
@@ -178,7 +237,7 @@ def effective_profile(profile: dict, analysis: list) -> dict:
         practices = "\n".join(line for line in practices.splitlines()
                               if not any(_word_in(line, t) for t in terms))
         names = ", ".join(e["name"] for e in a["existing"])
-        practices += f"\n- Keep the project's own {a['concern']} ({names}); do not introduce {kit['name']}."
+        keep_notes.append(f"- Keep the project's own {a['concern']} ({names}); do not introduce {kit['name']}.")
 
     for a in skipped:
         item = items[a["concern"]]
@@ -194,6 +253,8 @@ def effective_profile(profile: dict, analysis: list) -> dict:
         if terms:
             practices = "\n".join(line for line in practices.splitlines()
                                   if not any(_word_in(line, t) for t in terms))
+
+    practices = "\n".join([practices, *keep_notes]) if keep_notes else practices
 
     if eff.get("verify_steps"):
         kept_map = {a["concern"]: a for a in ordered_kept}

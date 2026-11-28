@@ -1,5 +1,9 @@
 """Rendering of CLAUDE.md pieces: commands, practices, path-scoped rule files."""
 
+from __future__ import annotations
+
+import json
+
 from .core import COMMAND_LABELS, PLACEHOLDER, PROFILES, split_sections
 
 
@@ -70,7 +74,8 @@ def render_practices(profiles: list, ctx: dict) -> str:
 
 
 def render_rule_file(profile: dict, paths: list, version: str | None = None) -> str:
-    path_lines = "\n".join(f'  - "{pat}"' for pat in paths)
+    # a JSON string is a valid YAML double-quoted scalar: quotes, backslashes and newlines get escaped
+    path_lines = "\n".join(f"  - {json.dumps(str(pat), ensure_ascii=False)}" for pat in paths)
     title = profile.get("display_name", profile["stack"])
     text = combined_practices(profile, version)
     return f"---\npaths:\n{path_lines}\n---\n\n# {title} Conventions\n\n{text}\n"

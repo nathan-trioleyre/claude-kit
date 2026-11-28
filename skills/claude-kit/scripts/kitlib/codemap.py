@@ -1,8 +1,10 @@
 """`codemap`: compact auto-generated project map."""
 
+from __future__ import annotations
+
 from pathlib import Path
 
-from .core import sha256_bytes, sha256_text, write_text
+from .core import sha256_norm, write_text
 from .detect import collect_project_files, detect_details
 
 
@@ -43,13 +45,13 @@ def sync_codemap(project: Path, managed: dict, dry: bool, report: list) -> None:
     label = ".claude/codemap.md"
     dest = project / label
     content = render_codemap(project)
-    src_hash = sha256_text(content)
+    src_hash = sha256_norm(content.encode("utf-8"))
     if not dest.exists():
         write_text(dest, content, dry)
         managed[label] = src_hash
         report.append(f"created   {label}")
         return
-    dest_hash = sha256_bytes(dest.read_bytes())
+    dest_hash = sha256_norm(dest.read_bytes())
     if dest_hash == src_hash:
         managed[label] = src_hash
         report.append(f"unchanged {label}")
