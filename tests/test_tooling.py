@@ -886,6 +886,42 @@ class TestToolingConflicts(unittest.TestCase):
             self.assertIn("rustup component add clippy rustfmt", gl)
             self.assertIn("cargo fetch", gl)
 
+    def test_scaffold_tooling_ci_installs_go_toolchain_and_golangci_lint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            kit = kit_with_real_profiles(t, "go")
+            apply_bin = apply_bin_of(kit)
+            proj = t / "svc"
+            write(proj / "go.mod", "module example.com/svc\n\ngo 1.23\n")
+            write(proj / ".golangci.yml", "version: \"2\"\n")
+
+            run_apply(apply_bin, "scaffold-tooling", "--project", str(proj),
+                      "--base-preset", "ci", "--ci-provider", "github")
+            gh = (proj / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+            self.assertIn("actions/setup-go@v5", gh)
+            self.assertIn("go-version-file: go.mod", gh)
+            self.assertIn("golangci/golangci-lint-action@v9", gh)
+            self.assertIn("install-only: true", gh)
+            self.assertIn("golangci-lint run", gh)
+
+            run_apply(apply_bin, "scaffold-tooling", "--project", str(proj),
+                      "--base-preset", "ci", "--ci-provider", "gitlab")
+            gl = (proj / ".gitlab-ci.yml").read_text(encoding="utf-8")
+            self.assertIn("image: golangci/golangci-lint:v2.", gl)
+            self.assertIn("golangci-lint run", gl)
+
+            # Without the linter in verify, plain Go image and no lint install
+            proj2 = t / "nolint"
+            write(proj2 / "go.mod", "module example.com/nolint\n\ngo 1.23\n")
+            run_apply(apply_bin, "scaffold-tooling", "--project", str(proj2),
+                      "--base-preset", "ci", "--ci-provider", "github")
+            gh2 = (proj2 / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+            self.assertIn("actions/setup-go@v5", gh2)
+            self.assertNotIn("golangci", gh2)
+            run_apply(apply_bin, "scaffold-tooling", "--project", str(proj2),
+                      "--base-preset", "ci", "--ci-provider", "gitlab")
+            self.assertIn("image: golang:1", (proj2 / ".gitlab-ci.yml").read_text(encoding="utf-8"))
+
     def test_real_profiles_expose_targeted_tests_hygiene_and_audit_commands(self):
         with tempfile.TemporaryDirectory() as tmp:
             t = Path(tmp)

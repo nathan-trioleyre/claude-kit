@@ -13,6 +13,8 @@ from .tooling import analyze_tooling, effective_profile
 CI_PROVIDERS = ("github", "gitlab")
 CI_DESTS = {"github": ".github/workflows/ci.yml", "gitlab": ".gitlab-ci.yml"}
 NODE_STACKS = ("typescript", "nextjs", "angular", "react-vite", "vue")
+# Pinned as golangci-lint recommends; the Docker image of this tag ships the Go toolchain.
+GOLANGCI_LINT_VERSION = "v2.15.0"
 
 
 def _origin_url(project: Path) -> str:
@@ -61,7 +63,7 @@ def render_ci(project: Path, provider: str) -> str:
 
 # --- GitHub Actions ---------------------------------------------------------
 
-def _ci_setup_steps(stack: str, install_cmd: str) -> list:
+def _ci_setup_steps(stack: str, install_cmd: str, verify_cmd: str = "") -> list:
     if stack == "python":
         steps = [
             "      - uses: actions/setup-python@v5\n        with:\n          python-version: '3.12'",
@@ -79,6 +81,14 @@ def _ci_setup_steps(stack: str, install_cmd: str) -> list:
         return ["      - uses: actions/setup-dotnet@v4\n        with:\n          dotnet-version: '9.0.x'"]
     if stack == "rust":
         return ["      - uses: dtolnay/rust-toolchain@stable\n        with:\n          components: clippy, rustfmt"]
+    if stack == "go":
+        steps = ["      - uses: actions/setup-go@v5\n        with:\n          go-version-file: go.mod"]
+        if "golangci-lint" in verify_cmd:
+            steps.append(
+                "      - uses: golangci/golangci-lint-action@v9\n        with:\n"
+                f"          version: {GOLANGCI_LINT_VERSION}\n          install-only: true"
+            )
+        return steps
     return []
 
 
@@ -112,7 +122,7 @@ def render_ci_workflow(project: Path) -> str:
             "    runs-on: ubuntu-latest",
             "    steps:",
             "      - uses: actions/checkout@v4",
-            *_ci_setup_steps(stack, install_cmd),
+            *_ci_setup_steps(stack, install_cmd, verify_cmd),
         ])
         if install_cmd:
             lines.append(f"      - run: {install_cmd}")
@@ -130,7 +140,7 @@ def _yaml_scalar(cmd: str) -> str:
     return cmd
 
 
-def _gitlab_image_and_setup(stack: str, install_cmd: str) -> tuple:
+def _gitlab_image_and_setup(stack: str, install_cmd: str, verify_cmd: str = "") -> tuple:
     tool = install_cmd.split(" ", 1)[0]
     if stack == "python":
         setup = [f"pip install {tool}"] if tool in ("uv", "poetry", "pdm", "pipenv") else []
@@ -146,7 +156,9 @@ def _gitlab_image_and_setup(stack: str, install_cmd: str) -> tuple:
     if stack == "rust":
         return "rust:1", ["rustup component add clippy rustfmt"]
     if stack == "go":
-        return "golang:1.23", []
+        if "golangci-lint" in verify_cmd:
+            return f"golangci/golangci-lint:{GOLANGCI_LINT_VERSION}", []
+        return "golang:1", []
     if stack == "java-spring":
         return "eclipse-temurin:21", []
     if stack == "php":
@@ -171,7 +183,7 @@ def render_gitlab_ci(project: Path) -> str:
         install_cmd, verify_cmd = _job_commands(p)
         if not (install_cmd or verify_cmd):
             continue
-        image, setup = _gitlab_image_and_setup(p["stack"], install_cmd)
+        image, setup = _gitlab_image_and_setup(p["stack"], install_cmd, verify_cmd)
         script = setup + [c for c in (install_cmd, verify_cmd) if c]
         jobs.append((_job_id(p["stack"]), image, script))
     if not jobs:
