@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Stop hook: runs the project's verify command before Claude finishes a turn.
-# claude-kit-hook-version: 3
+# claude-kit-hook-version: 4
 
 Active by default whenever `.claude/kit.json` defines a non-empty `"verify_command"`
 and `"stop_verify"` is not explicitly `false` (opt-out). Exits immediately (0) otherwise.
@@ -108,6 +108,8 @@ def has_git_changes(project: Path) -> bool:
             cwd=project,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5,
         )
         if res.returncode == 0:
@@ -117,7 +119,16 @@ def has_git_changes(project: Path) -> bool:
     return True
 
 
+def _utf8_stdio() -> None:
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
 def main() -> int:
+    _utf8_stdio()
     try:
         payload = json.load(sys.stdin)
     except Exception:
@@ -137,8 +148,8 @@ def main() -> int:
     except Exception:
         return 0
 
-    if not kit_data.get("stop_verify"):
-        return 0
+    if kit_data.get("stop_verify") is False:
+        return 0  # explicit opt-out
 
     verify_cmd = (kit_data.get("verify_command") or "").strip()
     if not verify_cmd:
@@ -154,6 +165,8 @@ def main() -> int:
             cwd=project,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=110,
         )
     except subprocess.TimeoutExpired:

@@ -12,7 +12,12 @@
       "Bash(git branch --list*)",
       "Bash(git branch -a*)",
       "Bash(git branch -v*)",
-      "Bash(git branch --show-current)"
+      "Bash(git branch --show-current)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git switch *)",
+      "Bash(git stash list*)",
+      "Bash(git worktree list*)"
     ],
     "deny": [
       "Bash(sudo *)",
@@ -34,12 +39,25 @@
       "Read(**/.npmrc)",
       "Read(**/.pypirc)",
       "Read(**/credentials.json)",
+      "Read(**/.env.stage*)",
+      "Read(**/.env.preprod*)",
+      "Read(**/.env.uat*)",
+      "Read(**/.env.qa*)",
+      "Read(**/.env.secret*)",
+      "Read(**/.aws/credentials)",
+      "Read(**/.git-credentials)",
+      "Read(**/.netrc)",
+      "Read(**/.docker/config.json)",
+      "Read(**/*.tfvars)",
       "Bash(cat *.env)",
       "Bash(cat *.env.*)",
       "Bash(type *.env)",
       "Bash(git push --force*)",
       "Bash(git push -f*)",
-      "Bash(git reset --hard*)"
+      "Bash(git reset --hard*)",
+      "PowerShell(git push --force*)",
+      "PowerShell(git push -f*)",
+      "PowerShell(git reset --hard*)"
     ]
   },
   "hooks": {
@@ -56,7 +74,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit|Bash",
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Read",
         "hooks": [
           {
             "type": "command",
@@ -68,12 +86,12 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit",
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
         "hooks": [
           {
             "type": "command",
             "command": "HOOK_SCRIPT=format.py; . \"$CLAUDE_PROJECT_DIR/.claude/hooks/run-hook.sh\"",
-            "timeout": 20
+            "timeout": 30
           }
         ]
       }

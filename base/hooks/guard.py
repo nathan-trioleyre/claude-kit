@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """PreToolUse hook: blocks destructive actions BEFORE they execute.
-# claude-kit-hook-version: 4
+# claude-kit-hook-version: 5
 
 Claude Code passes JSON on stdin (tool name + tool parameters).
 Exiting with code 2 blocks the action and sends stderr back to Claude.
 Code 0 allows the action to proceed.
+
+Covered tools: Bash and PowerShell (command), Write/Edit/MultiEdit (file_path),
+NotebookEdit (notebook_path) and Read (file_path, second layer behind Read deny rules).
 
 WARNING: this is a safety net against accidents, not a security boundary.
 `deny` rules in settings.json and an isolated environment remain more reliable.
@@ -13,32 +16,60 @@ from datetime import datetime, timezone
 import json
 import os
 import re
-import shlex
 import sys
 from pathlib import Path
 
 SAFE_ENV_SUFFIXES = (".env.example", ".env.sample", ".env.template", ".env.dist")
-SECRET_SUFFIXES = (".pem", ".key", ".p12", ".pfx")
-SECRET_NAMES = {"credentials", "credentials.json", ".npmrc", ".pypirc"}
+SECRET_SUFFIXES = (".pem", ".key", ".p12", ".pfx", ".tfvars")
+SECRET_NAMES = {
+    "credentials", "credentials.json", ".npmrc", ".pypirc", ".git-credentials", ".netrc", "_netrc",
+}
 
+# POSIX top-level dirs where any recursive delete is blocked.
 PROTECTED_POSIX_DIRS = {
-    "/bin", "/boot", "/dev", "/etc", "/home", "/lib", "/lib64",
-    "/opt", "/proc", "/root", "/sbin", "/sys", "/usr", "/var",
+    "bin", "boot", "dev", "etc", "lib", "lib64", "opt", "proc", "root", "sbin", "sys", "usr", "var",
 }
-PROTECTED_WIN_DIRS = {
-    "windows", "users", "program files", "program files (x86)", "programdata", "system32",
-}
+# Top-level dirs that hold user homes: the dir, a home and a home's direct child are blocked.
+USER_HOME_ROOTS = {"home", "users"}
+PROTECTED_WIN_DIRS = {"windows", "program files", "program files (x86)", "programdata", "system32"}
+HOME_PREFIXES = ("~", "$home", "${home}", "$env:userprofile", "${env:userprofile}", "$env:home", "%userprofile%")
+WILDCARDS = {"*", "*.*"}
+
 WIN_DELETE_CMDS = {"remove-item", "ri", "rd", "rmdir", "del", "erase"}
 # Shells that take an inline script: the script is inspected recursively.
 SHELLS = {"bash", "sh", "zsh", "dash", "ksh", "pwsh", "powershell", "cmd"}
 SHELL_INLINE_FLAGS = {"-c", "-command", "/c", "-encodedcommand"}
-# Commands that read/copy/send a file: forbidden on secret files.
+# Commands that read a file: forbidden on secret files.
 READER_CMDS = {
     "cat", "type", "less", "more", "head", "tail", "bat", "nl", "tac", "xxd", "strings",
-    "get-content", "gc", "select-string", "sls", "grep", "rg", "egrep", "fgrep", "sed", "awk",
-    "cp", "copy", "mv", "move", "scp", "base64", "openssl", "source", ".",
+    "get-content", "gc", "base64", "source", ".",
 }
+# First positional argument is a pattern/script, not a file.
+PATTERN_CMDS = {"grep", "rg", "egrep", "fgrep", "select-string", "sls", "sed", "awk"}
+# cp-like: every positional except the last is a source (read).
+COPY_CMDS = {"cp", "copy", "mv", "move", "scp", "copy-item", "cpi", "move-item", "mi"}
+OPENSSL_READ_FLAGS = {"-in", "-key", "-inkey", "-signkey", "-cakey", "-kfile", "-passin"}
+SQL_CLIENTS = {"psql", "mysql", "mariadb", "sqlite3", "sqlcmd", "mongo", "mongosh", "duckdb", "cockroach"}
+DOWNLOADERS = {"curl", "wget", "irm", "iwr", "invoke-webrequest", "invoke-restmethod"}
+EVALUATORS = SHELLS | {"iex", "invoke-expression", "python", "python3", "node", "perl", "ruby"}
+# Prefixes that run the next word as the real command.
+WRAPPERS = {"env", "nohup", "time", "command", "exec", "nice", "then", "do", "else", "!"}
+XARGS_VALUE_FLAGS = {"-n", "-i", "-p", "-l", "-d", "-e", "-s", "-a"}
+GIT_GLOBAL_VALUE_OPTS = {"-c", "-C", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env"}
 MAX_SHELL_DEPTH = 3
+
+BLOCK_SUFFIX = (" Do not retry with a variant or workaround: if it is really needed, "
+                "ask the user to run it themselves.")
+
+
+# --------------------------------------------------------------------------- output
+
+def _utf8_stdio() -> None:
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 
 def log_block(payload: dict, tool: str, target: str, reason: str) -> None:
@@ -65,15 +96,18 @@ def log_block(payload: dict, tool: str, target: str, reason: str) -> None:
 def block(message: str, payload: dict | None = None, tool: str = "", target: str = "") -> None:
     if payload is not None:
         log_block(payload, tool, target, message)
-    print(f"BLOCKED: {message}", file=sys.stderr)
+    print(f"BLOCKED: {message}{BLOCK_SUFFIX}", file=sys.stderr)
     sys.exit(2)
 
+
+# --------------------------------------------------------------------------- secret files
 
 def is_protected_file(path: str) -> bool:
     """Return True if path points to a secret/key/credential file (excluding .env templates)."""
     if not path:
         return False
-    name = Path(path.replace("\\", "/")).name.lower()
+    p = Path(path.strip().strip("\"'").replace("\\", "/"))
+    name = p.name.lower()
     if not name or name.endswith(SAFE_ENV_SUFFIXES):
         return False
     if name == ".env" or name.startswith(".env."):
@@ -82,113 +116,343 @@ def is_protected_file(path: str) -> bool:
         return True
     if name.startswith(("id_rsa", "id_ed25519")):
         return True
+    if name == "config.json" and p.parent.name.lower() == ".docker":
+        return True
     return name in SECRET_NAMES
 
 
-def _tokenize(segment: str, posix: bool = True) -> list:
-    try:
-        return shlex.split(segment, posix=posix)
-    except ValueError:
-        return segment.split()
+# --------------------------------------------------------------------------- parsing
+
+def split_segments(command: str) -> list:
+    """Split a command line on ; && || | & and newlines, ignoring separators inside quotes.
+
+    Returns a list of (segment_text, piped) where piped is True when the segment
+    receives the output of the previous one through `|`.
+    """
+    segments, buf, quote, piped_next = [], [], None, False
+    i, n = 0, len(command)
+
+    def flush(next_piped: bool) -> None:
+        nonlocal buf, piped_next
+        text = "".join(buf).strip()
+        if text:
+            segments.append((text, piped_next))
+        buf, piped_next = [], next_piped
+
+    while i < n:
+        ch = command[i]
+        if quote:
+            buf.append(ch)
+            if ch == "\\" and quote == '"' and i + 1 < n:
+                buf.append(command[i + 1])
+                i += 1
+            elif ch == quote:
+                quote = None
+        elif ch in "\"'":
+            quote = ch
+            buf.append(ch)
+        elif command.startswith(("&&", "||"), i):
+            flush(False)
+            i += 1
+        elif ch == "|":
+            flush(True)
+        elif ch in ";&\n":
+            if ch == "&" and i > 0 and command[i - 1] in "<>":
+                buf.append(ch)  # 2>&1 style redirection
+            else:
+                flush(False)
+        else:
+            buf.append(ch)
+        i += 1
+    flush(False)
+    return segments
 
 
-def _is_dangerous_rm_target(raw_target: str) -> bool:
-    target = raw_target.strip().strip("\"'")
-    if not target:
-        return False
-    normalized = target.rstrip("/") or "/"
-    if normalized in {"/", "/*", ".", "..", "*", "~", "$HOME", "${HOME}"}:
-        return True
-    if normalized.startswith(("~/", "$HOME/", "${HOME}/", "./*", "../*")):
-        return True
-    if normalized in {"/tmp", "/tmp/*"}:
-        return True
-    for protected in PROTECTED_POSIX_DIRS:
-        if normalized == protected or normalized.startswith(protected + "/"):
-            return True
-    return False
+def tokenize(segment: str) -> list:
+    """Whitespace split honouring quotes; quote chars are removed, backslashes are kept
+    literally (so Windows paths survive) except for \\" inside double quotes."""
+    tokens, buf, quote, has_token = [], [], None, False
+    i, n = 0, len(segment)
+    while i < n:
+        ch = segment[i]
+        if quote:
+            if ch == "\\" and quote == '"' and i + 1 < n and segment[i + 1] == '"':
+                buf.append('"')
+                i += 1
+            elif ch == quote:
+                quote = None
+            else:
+                buf.append(ch)
+        elif ch in "\"'":
+            quote, has_token = ch, True
+        elif ch.isspace():
+            if buf or has_token:
+                tokens.append("".join(buf))
+            buf, has_token = [], False
+        else:
+            buf.append(ch)
+        i += 1
+    if buf or has_token:
+        tokens.append("".join(buf))
+    return tokens
 
 
-def _check_rm_segment(tokens: list) -> str | None:
-    if not tokens or Path(tokens[0]).name.lower() != "rm":
-        return None
-    recursive = False
-    targets = []
-    after_double_dash = False
-    for tok in tokens[1:]:
-        if not after_double_dash and tok == "--":
-            after_double_dash = True
-            continue
-        if not after_double_dash and tok.startswith("-"):
-            if tok == "--recursive" or (not tok.startswith("--") and any(c in tok[1:] for c in "rR")):
-                recursive = True
-            continue
-        targets.append(tok)
-    if recursive and any(_is_dangerous_rm_target(t) or _is_dangerous_win_target(t, True) for t in targets):
-        return "recursive rm on a dangerous path (root, system dir, home, parent, '.', '*')."
-    return None
-
-
-def _is_dangerous_win_target(raw_target: str, recursive: bool) -> bool:
-    target = raw_target.strip().strip("\"'").replace("/", "\\")
-    if not target:
-        return False
-    low = target.lower().rstrip("\\")
-    if re.fullmatch(r"[a-z]:(?:\\?\*)?", low):
-        return True
-    m = re.match(r"^[a-z]:\\([^\\]+)", low)
-    if m and m.group(1) in PROTECTED_WIN_DIRS:
-        return True
-    if recursive and low in {".", "..", "*", "~", "$home", "$env:userprofile"}:
-        return True
-    if recursive and low.startswith(("~\\", "$home\\", "$env:userprofile\\")):
-        return True
-    return False
-
-
-def _check_win_delete_segment(tokens: list) -> str | None:
-    if not tokens or tokens[0].lower() not in WIN_DELETE_CMDS:
-        return None
-    cmd = tokens[0].lower()
-    recursive = cmd in {"rd", "rmdir"} and any(t.lower() in {"/s", "-recurse"} for t in tokens[1:])
-    if cmd in {"remove-item", "ri"}:
-        recursive = any(t.lower() in {"-recurse", "-r"} for t in tokens[1:])
-    if cmd in {"del", "erase"}:
-        recursive = any(t.lower() == "/s" for t in tokens[1:])
-
-    targets = [t for t in tokens[1:] if not t.startswith(("-", "/"))]
-    for target in targets:
-        if _is_dangerous_win_target(target, recursive):
-            return f"dangerous Windows deletion ({tokens[0]} on drive root, system dir, or recursive wildcard/home)."
-    return None
-
-
-def _cmd_name(token: str) -> str:
-    name = Path(token.replace("\\", "/")).name.lower()
+def cmd_name(token: str) -> str:
+    stripped = token.replace("\\", "/").lstrip("({&")
+    name = Path(stripped).name.lower() or stripped.lower()
     return name[:-4] if name.endswith(".exe") else name
+
+
+def strip_wrappers(tokens: list) -> tuple:
+    """Drop env assignments and wrappers (env, nohup, xargs...). Returns (tokens, via_xargs)."""
+    via_xargs = False
+    toks = list(tokens)
+    while toks:
+        head = toks[0]
+        name = cmd_name(head)
+        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", head):
+            toks = toks[1:]
+        elif name in WRAPPERS:
+            toks = toks[1:]
+            while toks and toks[0].startswith("-"):
+                toks = toks[1:]
+        elif name == "xargs":
+            via_xargs = True
+            toks = toks[1:]
+            while toks and toks[0].startswith("-"):
+                flag = toks[0].lower()
+                toks = toks[1:]
+                if flag in XARGS_VALUE_FLAGS and toks:
+                    toks = toks[1:]
+        else:
+            break
+    return toks, via_xargs
+
+
+def positionals(args: list) -> list:
+    return [a for a in args if a and not a.startswith("-")]
 
 
 def _inline_script(tokens: list) -> str | None:
     """For `bash -c "..."` / `pwsh -Command "..."` return the inline script, else None."""
-    if not tokens or _cmd_name(tokens[0]) not in SHELLS:
+    if not tokens or cmd_name(tokens[0]) not in SHELLS:
         return None
     for idx, tok in enumerate(tokens[1:], start=1):
         low = tok.lower()
-        if low in SHELL_INLINE_FLAGS and idx + 1 < len(tokens):
+        if idx + 1 >= len(tokens):
+            break
+        if low in SHELL_INLINE_FLAGS:
             return " ".join(tokens[idx + 1:])
-        if low.startswith("-") and not low.startswith("--") and "c" in low[1:] and len(low) <= 4 and idx + 1 < len(tokens):
+        if low.startswith("-") and not low.startswith("--") and "c" in low[1:] and len(low) <= 4:
             return " ".join(tokens[idx + 1:])  # combined flags such as -lc
     return None
 
 
-def _check_secret_access(tokens: list, segment: str) -> str | None:
-    if tokens and _cmd_name(tokens[0]) in READER_CMDS:
-        for tok in tokens[1:]:
-            if not tok.startswith("-") and is_protected_file(tok.strip("\"'")):
-                return f"reading/copying a protected file ({tok}). Use the provider's environment variables instead."
-    for target in re.findall(r">>?\s*[\"']?([^\s\"'|;&]+)", segment):
+# --------------------------------------------------------------------------- deletion targets
+
+def _project_root() -> str | None:
+    raw = os.environ.get("CLAUDE_PROJECT_DIR")
+    return normalize_path(raw) if raw else None
+
+
+def normalize_path(raw: str) -> str:
+    """Lower-cased, forward-slash path; homes become `~`, Git Bash `/c/x` becomes `c:/x`."""
+    t = raw.strip().strip("\"'").rstrip(")").replace("\\", "/")
+    low = t.lower()
+    for prefix in HOME_PREFIXES:
+        if low == prefix or low.startswith(prefix + "/"):
+            low = "~" + low[len(prefix):]
+            break
+    m = re.match(r"^/(?:mnt/|cygdrive/)?([a-z])(/.*)?$", low)
+    if m:
+        low = f"{m.group(1)}:{m.group(2) or '/'}"
+    low = re.sub(r"/{2,}", "/", low)
+    if len(low) > 1 and low.endswith("/") and not re.fullmatch(r"[a-z]:/", low):
+        low = low.rstrip("/")
+    return low
+
+
+def _split_root(norm: str) -> tuple:
+    """Return (root, parts): root is '~', '/', 'c:' (drive) or '' (relative)."""
+    if norm == "~" or norm.startswith("~/"):
+        root, rest = "~", norm[1:]
+    elif re.match(r"^[a-z]:", norm):
+        root, rest = norm[:2], norm[2:]
+    elif norm.startswith("/"):
+        root, rest = "/", norm
+    else:
+        root, rest = "", norm
+    parts = [p for p in rest.split("/") if p and p != "."]
+    return root, parts
+
+
+def _inside(path: str, parent: str) -> bool:
+    return path != parent and path.startswith(parent.rstrip("/") + "/")
+
+
+def is_dangerous_delete_target(raw: str, recursive: bool = True) -> bool:
+    """True for roots, system dirs, homes (and their direct children), '.', '..', '*'.
+
+    Non-recursive deletes are only blocked on system dirs and drive roots.
+    Paths strictly inside $CLAUDE_PROJECT_DIR are always allowed.
+    """
+    norm = normalize_path(raw)
+    if not norm:
+        return False
+    root, parts = _split_root(norm)
+    while parts and parts[-1] in WILDCARDS:
+        parts.pop()  # deleting every child of X is as bad as deleting X
+
+    if root == "":
+        return recursive and (not parts or all(p == ".." for p in parts))
+
+    full = (root.rstrip("/") + "/" + "/".join(parts)) if root != "/" else "/" + "/".join(parts)
+    project = _project_root()
+    if project and root != "~":
+        if full.rstrip("/") == project.rstrip("/"):
+            return True
+        if _inside(full, project):
+            return False
+
+    if not parts:
+        return True  # '/', drive root, '~'
+    top = parts[0]
+    if root == "~":
+        return recursive and len(parts) <= 1
+    if root == "/":
+        if top in PROTECTED_POSIX_DIRS:
+            return True
+        if top in USER_HOME_ROOTS:
+            return recursive and len(parts) <= 3
+        return recursive and top == "tmp" and len(parts) == 1
+    # Windows drive
+    if top in PROTECTED_WIN_DIRS:
+        return True
+    if top == "users":
+        return recursive and len(parts) <= 3
+    return False
+
+
+# --------------------------------------------------------------------------- delete commands
+
+def _is_ps_param(tok: str) -> bool:
+    return bool(re.match(r"^-[A-Za-z]{2,}(:.*)?$", tok))
+
+
+def _ps_param(tok: str) -> tuple:
+    """'-Recurse:$true' -> ('recurse', '$true')."""
+    name, _, value = tok[1:].partition(":")
+    return name.lower(), value.lower()
+
+
+def _ps_is_recurse(tok: str) -> bool:
+    if not _is_ps_param(tok) and tok.lower() != "-r":
+        return False
+    name, value = _ps_param(tok)
+    return "recurse".startswith(name) and len(name) >= 1 and value not in {"$false", "false", "0"}
+
+
+def _parse_remove_item(args: list) -> tuple:
+    """Return (recursive, targets) for Remove-Item style arguments."""
+    recursive, targets, skip_next = False, [], None
+    for tok in args:
+        if skip_next is not None:
+            if skip_next:
+                targets.extend(tok.split(","))
+            skip_next = None
+            continue
+        if tok.startswith("-"):
+            name, value = _ps_param(tok)
+            if _ps_is_recurse(tok):
+                recursive = True
+            elif name in {"path", "literalpath", "lp", "pspath"}:
+                if value:
+                    targets.extend(tok.split(":", 1)[1].split(","))
+                else:
+                    skip_next = True
+            elif name in {"filter", "include", "exclude", "credential", "stream"} and not value:
+                skip_next = False
+            continue
+        targets.extend(t for t in tok.split(",") if t)
+    return recursive, targets
+
+
+def _parse_posix_rm(args: list) -> tuple:
+    if any(_is_ps_param(t) and not re.fullmatch(r"-[rRfivdI]+", t) for t in args):
+        return _parse_remove_item(args)  # PowerShell `rm` alias
+    recursive, targets, after_dd = False, [], False
+    for tok in args:
+        if not after_dd and tok == "--":
+            after_dd = True
+            continue
+        if not after_dd and tok.startswith("-"):
+            if tok == "--recursive" or (not tok.startswith("--") and any(c in tok[1:] for c in "rR")):
+                recursive = True
+            continue
+        targets.append(tok)
+    return recursive, targets
+
+
+def check_delete(tokens: list, piped: bool, via_xargs: bool) -> str | None:
+    cmd, args = cmd_name(tokens[0]), tokens[1:]
+    if cmd == "rm":
+        recursive, targets = _parse_posix_rm(args)
+    elif cmd in {"remove-item", "ri"}:
+        recursive, targets = _parse_remove_item(args)
+    elif cmd in {"rd", "rmdir"}:
+        recursive = any(t.lower() in {"/s", "-recurse", "-r"} for t in args)
+        targets = [t for t in args if not t.startswith("-") and not re.fullmatch(r"/[a-zA-Z]", t)]
+    elif cmd in {"del", "erase"}:
+        recursive = any(t.lower() == "/s" for t in args)
+        targets = [t for t in args if not t.startswith("-") and not re.fullmatch(r"/[a-zA-Z]", t)]
+    else:
+        return None
+
+    if recursive and not targets and (piped or via_xargs):
+        return f"recursive {tokens[0]} fed by a pipeline/xargs deletes an unknown set of paths."
+    for target in targets:
+        if is_dangerous_delete_target(target, recursive):
+            return (f"dangerous deletion ({tokens[0]} {target}): root, system dir, home, "
+                    "project root, '.', '..' or '*'.")
+    return None
+
+
+# --------------------------------------------------------------------------- other checks
+
+def check_secret_access(tokens: list) -> str | None:
+    cmd, args = cmd_name(tokens[0]), tokens[1:]
+    reads: list = []
+    if cmd in READER_CMDS:
+        reads = positionals(args)
+    elif cmd in PATTERN_CMDS:
+        pos = positionals(args)
+        explicit_pattern = any(a in {"-e", "-f", "--regexp", "-pattern"} for a in (x.lower() for x in args))
+        reads = pos if explicit_pattern else pos[1:]
+    elif cmd in COPY_CMDS:
+        named = [args[i + 1] for i, a in enumerate(args[:-1]) if a.lower() in {"-path", "-literalpath"}]
+        if named:
+            reads = named
+        else:
+            pos = [a for i, a in enumerate(args) if not a.startswith("-")
+                   and not (i > 0 and args[i - 1].lower() == "-destination")]
+            reads = pos[:-1] if len(pos) > 1 else pos
+    elif cmd == "openssl":
+        reads = [args[i + 1] for i, a in enumerate(args[:-1]) if a.lower() in OPENSSL_READ_FLAGS]
+        reads = [r.split(":", 1)[1] if r.startswith("file:") else r for r in reads]
+    for path in reads:
+        if is_protected_file(path):
+            return f"reading/copying a protected file ({path}). Use the provider's environment variables instead."
+
+    for i, tok in enumerate(tokens):
+        m = re.match(r"^\d?(>>?|<)(.*)$", tok)
+        if not m:
+            continue
+        target = m.group(2) or (tokens[i + 1] if i + 1 < len(tokens) else "")
+        if target.startswith("&"):
+            continue
         if is_protected_file(target):
-            return f"redirecting output into a protected file ({target})."
+            verb = "reading" if m.group(1) == "<" else "redirecting output into"
+            return f"{verb} a protected file ({target})."
     return None
 
 
@@ -203,83 +467,152 @@ def _npmrc_has_ignore_scripts() -> bool:
         return False
 
 
-def _check_supply_chain(tokens: list) -> str | None:
-    if not tokens:
-        return None
-    cmd = _cmd_name(tokens[0])
-    # Block raw pip install / pip3 install / python -m pip install (runs setup.py)
+def check_supply_chain(tokens: list) -> str | None:
+    cmd = cmd_name(tokens[0])
     if cmd in {"pip", "pip3"} and len(tokens) > 1 and tokens[1].lower() == "install":
         return "raw pip install executes arbitrary setup.py scripts. Use 'uv add' / 'uv sync' instead."
     if cmd in {"python", "python3", "py"} and len(tokens) >= 4:
         if tokens[1] == "-m" and tokens[2].lower() == "pip" and tokens[3].lower() == "install":
             return "raw python -m pip install executes arbitrary setup.py scripts. Use 'uv add' / 'uv sync' instead."
-    # Block `npm install <pkg>` when ignore-scripts is not set globally or via CLI flag
     if cmd == "npm" and len(tokens) >= 2 and tokens[1].lower() in {"install", "i"}:
         args = [t for t in tokens[2:] if not t.startswith("-")]
         has_flag = any(t == "--ignore-scripts" for t in tokens[2:])
         if args and not has_flag and not _npmrc_has_ignore_scripts():
-            return "npm install <pkg> without ignore-scripts can run malicious postinstall scripts. Add 'ignore-scripts=true' to ~/.npmrc or pass '--ignore-scripts'."
+            return ("npm install <pkg> without ignore-scripts can run malicious postinstall scripts. "
+                    "Add 'ignore-scripts=true' to ~/.npmrc or pass '--ignore-scripts'.")
     return None
 
 
-def _check_git_and_find(segment: str, tokens: list) -> str | None:
-    if re.search(r"\bgit\s+branch\b[^|;&]*\s-D\b", segment):
-        return "git branch -D deletes a branch irrecoverably. Ask for confirmation."
-    if re.search(r"\bgit\s+push\b[^|;&]*(?:--delete\b|\s:\S+)", segment):
-        return "git push deleting a remote branch/tag. Ask for confirmation."
-    if re.search(r"\bgit\s+(?:checkout\s+--\s|restore\s+(?!--staged))", segment):
-        return "discarding working-tree changes (git checkout -- / git restore). Ask for confirmation."
-    if tokens and _cmd_name(tokens[0]) == "find" and any(t in {"-delete", "-exec", "-execdir", "-ok"} for t in tokens):
-        if "-delete" in tokens or any(t in {"rm", "rmdir", "del"} for t in tokens):
-            return "find ... -delete / -exec rm deletes files in bulk. Ask for confirmation."
+def git_subcommand(tokens: list) -> tuple:
+    """Skip git global options (-C dir, -c k=v, --git-dir=...) -> (subcommand, args)."""
+    i = 1
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok in GIT_GLOBAL_VALUE_OPTS:
+            i += 2
+        elif tok.startswith("-"):
+            i += 1
+        else:
+            return tok.lower(), tokens[i + 1:]
+    return "", []
+
+
+def _short_flags(args: list) -> str:
+    return "".join(a[1:] for a in args if a.startswith("-") and not a.startswith("--"))
+
+
+def check_git(tokens: list) -> str | None:
+    if cmd_name(tokens[0]) != "git":
+        return None
+    sub, args = git_subcommand(tokens)
+    flags = _short_flags(args)
+    longs = {a.split("=", 1)[0] for a in args if a.startswith("--")}
+    pos = positionals(args)
+
+    if sub == "reset" and "--hard" in longs:
+        return "git reset --hard destroys uncommitted changes."
+    if sub == "clean" and ("f" in flags or "--force" in longs):
+        return "git clean -f deletes untracked files."
+    if sub == "push":
+        if "f" in flags or longs & {"--force", "--force-with-lease"}:
+            return "git push --force / --force-with-lease rewrites remote history."
+        if any(p.startswith("+") for p in pos):
+            return "git push with a '+' force refspec rewrites remote history."
+        if "d" in flags or "--delete" in longs or any(p.startswith(":") for p in pos):
+            return "git push deleting a remote branch/tag."
+    deleting = "d" in flags or "--delete" in longs
+    if sub == "branch" and ("D" in flags or (deleting and ("f" in flags or "--force" in longs))):
+        return "git branch -D deletes an unmerged branch irrecoverably."
+    paths_after_dd = "--" in args and args.index("--") < len(args) - 1
+    if sub == "checkout" and (paths_after_dd or any(p in {".", "*", ":/"} for p in pos)):
+        return "git checkout of paths discards working-tree changes."
+    if sub == "restore":
+        staged = "S" in flags or "--staged" in longs
+        worktree = "W" in flags or "--worktree" in longs
+        if worktree or not staged:
+            return "git restore discards working-tree changes."
+    if sub == "stash" and pos[:1] and pos[0].lower() in {"drop", "clear"}:
+        return "git stash drop/clear deletes stashed work irrecoverably."
     return None
 
+
+def check_find(tokens: list) -> str | None:
+    if cmd_name(tokens[0]) != "find":
+        return None
+    if "-delete" in tokens:
+        return "find ... -delete deletes files in bulk."
+    if any(t in {"-exec", "-execdir", "-ok"} for t in tokens) and any(cmd_name(t) in {"rm", "rmdir", "del"} for t in tokens):
+        return "find ... -exec rm deletes files in bulk."
+    return None
+
+
+def check_sql(tokens: list, pipeline_has_sql: bool) -> str | None:
+    cmd = cmd_name(tokens[0])
+    if not (cmd in SQL_CLIENTS or tokens[0].lower() == "drop" or pipeline_has_sql):
+        return None
+    text = " ".join(tokens)
+    if re.search(r"(?i)\bdrop\s+(?:database|table|schema)\b", text):
+        return "DROP on a database. Use a manually reviewed migration instead."
+    return None
+
+
+def check_remote_exec(tokens: list, piped_from_download: bool) -> str | None:
+    cmd = cmd_name(tokens[0])
+    if piped_from_download:
+        reads_stdin = cmd in SHELLS or cmd in {"iex", "invoke-expression"} or tokens[1:] in ([], ["-"])
+        if cmd in EVALUATORS and reads_stdin:
+            return "executing a downloaded script (curl | sh, irm | iex)."
+    if cmd in {"iex", "invoke-expression"} and any(cmd_name(t) in DOWNLOADERS for t in tokens[1:]):
+        return "executing a downloaded script (Invoke-Expression (Invoke-WebRequest ...))."
+    return None
+
+
+# --------------------------------------------------------------------------- entry points
 
 def check_bash_command(command: str, _depth: int = 0) -> str | None:
-    """Return a block reason if command matches a destructive pattern, else None."""
-    if re.search(r"\b(?:curl|wget)\b[^|;&]*\|\s*(?:sudo\s+)?(?:ba|z)?sh\b", command):
-        return "executing a downloaded script (curl | sh)."
+    """Return a block reason if a Bash/PowerShell command matches a destructive pattern, else None."""
+    # First pass: tokenize and group segments into pipelines (a | b | c).
+    pipelines: list = []
+    for seg, piped in split_segments(command):
+        tokens, via_xargs = strip_wrappers(tokenize(seg))
+        if not piped or not pipelines:
+            pipelines.append([])
+        pipelines[-1].append((tokens, piped, via_xargs))
 
-    for segment in re.split(r"(?:\|\||&&|[|;&\n])", command):
-        seg = segment.strip()
-        if not seg:
+    parsed = []
+    for pipeline in pipelines:
+        has_sql = any(t and cmd_name(t[0]) in SQL_CLIENTS for t, _, _ in pipeline)
+        downloaded = False
+        for tokens, piped, via_xargs in pipeline:
+            parsed.append((tokens, piped, via_xargs, downloaded, has_sql))
+            if tokens and cmd_name(tokens[0]) in DOWNLOADERS:
+                downloaded = True
+
+    for tokens, piped, via_xargs, from_download, pipeline_has_sql in parsed:
+        if not tokens:
             continue
-        if re.search(r"\bsudo\b", seg):
+        if cmd_name(tokens[0]) in {"sudo", "doas"}:
             return "sudo is not allowed."
-        if re.search(r"(?i)\bdrop\s+(?:database|table|schema)\b", seg):
-            return "DROP on a database. Use a manually reviewed migration instead."
-        if re.search(r"\bgit\s+reset\s+--hard\b", seg):
-            return "git reset --hard destroys uncommitted changes. Ask for confirmation."
-        if re.search(r"\bgit\s+clean\b[^|;&]*(?:\s-[a-zA-Z]*f|\s--force\b)", seg):
-            return "git clean -f deletes untracked files. Ask for confirmation."
-        if re.search(r"\bgit\s+push\b", seg):
-            if re.search(r"(?:--force\b|--force-with-lease\b|\s-f\b)", seg):
-                return "git push --force / --force-with-lease. Ask the user for explicit confirmation."
-            if re.search(r"\bgit\s+push\b(?:\s+\S+)*\s+\+\S+", seg):
-                return "git push with '+' force refspec. Ask the user for explicit confirmation."
-
-        posix_tokens = _tokenize(seg, posix=True)
         if _depth < MAX_SHELL_DEPTH:
-            inline = _inline_script(posix_tokens)
+            inline = _inline_script(tokens)
             if inline:
                 nested = check_bash_command(inline, _depth + 1)
                 if nested:
                     return nested
-        extra = _check_secret_access(posix_tokens, seg) or _check_git_and_find(seg, posix_tokens) or _check_supply_chain(posix_tokens)
-        if extra:
-            return extra
-        rm_reason = _check_rm_segment(posix_tokens)
-        if rm_reason:
-            return rm_reason
-
-        win_tokens = _tokenize(seg, posix=False)
-        win_reason = _check_win_delete_segment(win_tokens)
-        if win_reason:
-            return win_reason
+        reason = (check_remote_exec(tokens, piped and from_download)
+                  or check_sql(tokens, pipeline_has_sql)
+                  or check_git(tokens)
+                  or check_find(tokens)
+                  or check_secret_access(tokens)
+                  or check_supply_chain(tokens)
+                  or check_delete(tokens, piped, via_xargs))
+        if reason:
+            return reason
     return None
 
 
 def main() -> None:
+    _utf8_stdio()
     try:
         payload = json.load(sys.stdin)
     except Exception:
@@ -288,13 +621,18 @@ def main() -> None:
     tool = payload.get("tool_name", "")
     tool_input = payload.get("tool_input") or {}
 
-    if tool in ("Write", "Edit", "MultiEdit"):
-        path = tool_input.get("file_path", "") or ""
+    if tool in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
+        path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
         if is_protected_file(path):
             block(f"writing to a protected file ({path}). Use the provider's environment variables instead.",
                   payload, tool, path)
 
-    if tool == "Bash":
+    if tool == "Read":
+        path = tool_input.get("file_path", "") or ""
+        if is_protected_file(path):
+            block(f"reading a protected secret file ({path}).", payload, tool, path)
+
+    if tool in ("Bash", "PowerShell"):
         cmd = tool_input.get("command", "") or ""
         reason = check_bash_command(cmd)
         if reason:

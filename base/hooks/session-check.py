@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""SessionStart hook: injects a concise one-line status if the project has pending kit actions.
-# claude-kit-hook-version: 3
+"""SessionStart hook: injects a concise one-line status if the project has pending kit actions,
+plus a pointer to `.claude/handoff.md` (written by /handoff) when it exists.
+# claude-kit-hook-version: 4
 
 Fast and read-only: never modifies files, never blocks (always exits 0).
 """
@@ -34,13 +35,25 @@ def check_npmrc_supply_chain(kit_data: dict) -> str | None:
     return None
 
 
+def _utf8_stdio() -> None:
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
 def main() -> None:
+    _utf8_stdio()
     try:
         payload = json.load(sys.stdin)
     except Exception:
         payload = {}
 
     project = Path(os.environ.get("CLAUDE_PROJECT_DIR") or payload.get("cwd") or ".")
+    if (project / ".claude" / "handoff.md").is_file():
+        print("Handoff note from a previous session: .claude/handoff.md - read it if relevant.")
+
     kit_file = project / ".claude" / "kit.json"
     if not kit_file.is_file():
         return
