@@ -94,9 +94,13 @@
     "https://learn.microsoft.com/en-us/dotnet/fundamentals/code-analysis/configuration-files",
     "https://learn.microsoft.com/en-us/aspnet/core/",
     "https://learn.microsoft.com/en-us/aspnet/core/security/app-secrets",
-    "https://learn.microsoft.com/en-us/dotnet/core/extensions/logging"
+    "https://learn.microsoft.com/en-us/dotnet/core/extensions/logging",
+    "https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-format",
+    "https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-sln",
+    "https://learn.microsoft.com/en-us/dotnet/csharp/nullable-references",
+    "https://learn.microsoft.com/en-us/dotnet/core/extensions/dependency-injection/guidelines"
   ],
-  "last_verified": "2026-11-27",
+  "last_verified": "2026-11-28",
   "verify_steps": [
     {
       "cmd": "dotnet format --verify-no-changes",

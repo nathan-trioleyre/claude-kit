@@ -416,7 +416,10 @@
     "https://www.typescriptlang.org/tsconfig/",
     "https://nodejs.org/en/learn/getting-started/introduction-to-nodejs",
     "https://typescript-eslint.io/getting-started/",
-    "https://eslint.org/docs/latest/use/configure/configuration-files"
+    "https://eslint.org/docs/latest/use/configure/configuration-files",
+    "https://typescript-eslint.io/rules/no-explicit-any/",
+    "https://typescript-eslint.io/rules/explicit-module-boundary-types/",
+    "https://docs.npmjs.com/cli/v11/commands/npm-ci"
   ],
-  "last_verified": "2026-11-27"
+  "last_verified": "2026-11-28"
 }

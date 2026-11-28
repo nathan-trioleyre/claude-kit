@@ -374,7 +374,11 @@
     "https://angular.dev/guide/testing",
     "https://angular.dev/guide/testing/karma",
     "https://angular.dev/reference/versions",
-    "https://github.com/angular/angular/blob/main/CHANGELOG.md"
+    "https://github.com/angular/angular/blob/main/CHANGELOG.md",
+    "https://angular.dev/guide/di/creating-and-using-services",
+    "https://angular.dev/guide/di/lazy-loading-services",
+    "https://angular.dev/guide/templates/control-flow",
+    "https://angular.dev/api/router/withExperimentalPlatformNavigation"
   ],
   "last_verified": "2026-11-28"
 }

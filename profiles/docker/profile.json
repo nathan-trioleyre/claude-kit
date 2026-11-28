@@ -69,7 +69,11 @@
   "sources": [
     "https://docs.docker.com/build/building/best-practices/",
     "https://docs.docker.com/compose/compose-file/",
-    "https://github.com/hadolint/hadolint"
+    "https://github.com/hadolint/hadolint",
+    "https://docs.docker.com/build/building/secrets/",
+    "https://docs.docker.com/build/cache/optimize/",
+    "https://docs.docker.com/compose/how-tos/use-secrets/",
+    "https://docs.docker.com/reference/cli/docker/compose/config/"
   ],
-  "last_verified": "2026-11-27"
+  "last_verified": "2026-11-28"
 }

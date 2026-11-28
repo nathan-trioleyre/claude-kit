@@ -1,9 +1,8 @@
-- Follow the Microsoft C# coding conventions and the repo's `.editorconfig`.
-- Respect `global.json` and `Directory.Build.props`; do not change SDK or target framework without asking.
-- Keep nullable reference types enabled and fix warnings rather than suppressing them.
-- Use `async`/`await` end to end; never block with `.Result` or `.Wait()`; pass `CancellationToken` through.
-- Use dependency injection (constructor injection); avoid static state and service locators.
-- Use `ILogger<T>` with message templates (never string interpolation); `[LoggerMessage]` source generation is the recommended high-performance option.
-- Tests: one test project per source project, `dotnet test`; arrange/act/assert, no shared mutable state.
-- Secrets: user secrets or environment variables in development (user secrets are dev-only, not encrypted); production secrets from Key Vault or an equivalent store; never in committed `appsettings*.json`.
-- New solutions default to the `.slnx` format with SDK 10+ (`dotnet new sln --format sln` for the old one).
+- Follow the Microsoft C# coding conventions and the repo's `.editorconfig` (`dotnet format` applies EditorConfig settings; `--verify-no-changes` fails if files would change).
+- Keep nullable reference types enabled (`<Nullable>enable</Nullable>`) and fix warnings; use the null-forgiving `!` sparingly.
+- Do not block on async work (no `.Result`/`.Wait()`; blocking async DI factories can deadlock); use `await`.
+- Use constructor injection; avoid stateful static classes/members, static access to services and the service locator pattern.
+- Use `ILogger<T>` with message templates (never string interpolation; CA2254 flags it); `[LoggerMessage]` source generation is usually better for performance.
+- Run tests with `dotnet test`.
+- Secrets: user secrets or environment variables in development (user secrets are dev-only, not encrypted; env vars are plain text); production secrets from Azure Key Vault or an equivalent controlled store; never in committed `appsettings*.json`.
+- `dotnet new sln` creates `.slnx` from the .NET 10 SDK (`.sln` in .NET 9 and earlier); `dotnet sln migrate` converts an `.sln`.

@@ -1,6 +1,6 @@
-- Keep `strict: true` in `tsconfig.json`; avoid `any` (prefer `unknown` + narrowing).
-- Run `tsc --noEmit` alongside tests/lint when typechecking is separate from build.
-- Use `npm ci` for reproducible installs; do not edit `package-lock.json` by hand.
-- Validate external inputs (env vars, API payloads, CLI args) at boundaries before trusting types.
-- Prefer explicit return types on exported functions and `import type` for type-only imports.
-- Never commit secrets or `.env` files; load config from environment variables.
+- Keep `strict: true` in `tsconfig.json` (the default in current TypeScript); avoid `any` (typescript-eslint: `unknown` is safer, narrow before use).
+- Run `tsc --noEmit` alongside tests/lint when typechecking is separate from build (`noEmit` makes tsc a pure type-checker).
+- Use `npm ci` for reproducible installs (requires a lockfile, never rewrites it); do not edit `package-lock.json` by hand.
+- Prefer explicit return and argument types on exported functions (`explicit-module-boundary-types`).
+- Use `import type` / `import { type X }` for type-only imports; `verbatimModuleSyntax` enforces it.
+- Lint with typescript-eslint's flat config (`eslint.config.mjs` with `tseslint.configs.recommended`; `strict` is the stricter superset).

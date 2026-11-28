@@ -78,7 +78,11 @@
   "sources": [
     "https://doc.rust-lang.org/cargo/",
     "https://doc.rust-lang.org/clippy/",
-    "https://rust-lang.github.io/rustfmt/"
+    "https://rust-lang.github.io/rustfmt/",
+    "https://doc.rust-lang.org/clippy/usage.html",
+    "https://doc.rust-lang.org/book/ch09-03-to-panic-or-not-to-panic.html",
+    "https://doc.rust-lang.org/book/ch20-01-unsafe-rust.html",
+    "https://doc.rust-lang.org/book/ch11-03-test-organization.html"
   ],
-  "last_verified": "2026-11-27"
+  "last_verified": "2026-11-28"
 }

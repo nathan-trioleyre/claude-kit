@@ -467,7 +467,12 @@
     "https://docs.astral.sh/ruff/",
     "https://mypy.readthedocs.io/en/stable/config_file.html",
     "https://docs.pytest.org/",
-    "https://peps.python.org/pep-0008/"
+    "https://peps.python.org/pep-0008/",
+    "https://docs.astral.sh/uv/concepts/projects/layout/",
+    "https://docs.astral.sh/ruff/formatter/",
+    "https://docs.pytest.org/en/stable/explanation/goodpractices.html",
+    "https://docs.python.org/3/tutorial/controlflow.html",
+    "https://docs.python.org/3/howto/logging.html"
   ],
-  "last_verified": "2026-11-27"
+  "last_verified": "2026-11-28"
 }

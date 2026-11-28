@@ -1,6 +1,6 @@
-- Before concluding run fmt, clippy with `-D warnings` and tests across the whole workspace (`--workspace`).
-- Commit `Cargo.lock` for binary crates; use `cargo add` rather than editing versions by hand.
-- Propagate errors with `Result` and `?`; avoid `.unwrap()` and `.expect()` outside tests and invariants.
-- Keep `unsafe` blocks minimal, isolated, and documented with a `// SAFETY:` comment.
-- Prefer borrowing (`&T`, `&str`, `&[T]`) over cloning unless ownership is required.
-- Put unit tests in `#[cfg(test)] mod tests` and integration tests under `tests/`.
+- Before concluding run fmt, clippy and tests across the whole workspace (`--workspace`); fail on warnings (Cargo 1.97+: `build.warnings = "deny"`; older: `-D warnings`, which invalidates build caches).
+- Commit `Cargo.lock` when in doubt (deterministic builds); use `cargo add` rather than editing versions by hand.
+- Return `Result` by default and propagate with `?`; `.unwrap()`/`.expect()` are fine in tests and prototypes, otherwise only for provably impossible errors (explain in the `expect` message).
+- Keep `unsafe` blocks small, wrap them in a safe abstraction, and document each with a `// SAFETY:` comment.
+- Prefer borrowing (`&T`, `&str`, `&[T]`) over taking ownership or cloning unless ownership is required.
+- Put unit tests in `#[cfg(test)] mod tests` next to the code and integration tests under `tests/`.

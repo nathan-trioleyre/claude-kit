@@ -1,7 +1,8 @@
-- Use multi-stage builds to keep final runtime images small and free of build toolchains.
-- Pin base image tags (prefer specific versions or `-slim`/`-alpine` digests over floating `latest`).
-- Maintain a `.dockerignore` excluding `.git`, `node_modules`, `.venv`, and `.env*` files.
-- Run containers as a non-root `USER` in production Dockerfiles.
-- Order `COPY` and `RUN` layers from least to most frequently changing (`package*.json`/lockfile before source) for cache reuse.
-- Never bake secrets into `ENV`, `ARG`, or `COPY`; pass runtime secrets via environment variables or Compose secrets.
-- Validate Compose changes with `docker compose config --quiet` before committing.
+- Use multi-stage builds to keep the final image small and free of build toolchains.
+- Pin base images to a specific version tag or digest (tags are mutable); keep pins updated (e.g. Dependabot) so you do not miss security fixes.
+- Maintain a `.dockerignore` (`.gitignore`-style patterns) so files irrelevant to the build stay out of the context.
+- Run containers as a non-root `USER` when the service needs no privileges; use explicit UID/GID and avoid `sudo`.
+- Order layers so rarely changing steps come first: copy package manifests/lockfile, install dependencies, then copy source.
+- Never pass secrets via `ENV`/`ARG` (they persist in image layers); use build secret mounts (`RUN --mount=type=secret`) and Compose `secrets` rather than plain environment variables.
+- Validate Compose changes with `docker compose config --quiet` (validates only, prints nothing) before committing.
+- Lint Dockerfiles with `hadolint Dockerfile`; any violation fails the exit code unless `--failure-threshold` is raised.

@@ -1,8 +1,7 @@
-- Manage dependencies and the virtualenv with `uv` (`pyproject.toml` + lockfile); never `pip install` into the global interpreter.
-- Commit the lockfile; add dependencies with `uv add`, not by editing versions by hand.
-- Format and lint with `ruff` only; do not mix in black/isort/flake8 unless the project already does.
-- Type-hint all public functions; keep `mypy`/`pyright` clean if the project configures one.
-- Tests live in `tests/`, run with `pytest`; one behavior per test, fixtures over setup code.
-- Use `pathlib` for paths, `logging` instead of `print`, and context managers for resources.
-- Never use mutable default arguments; never catch bare `except:`.
-- Read configuration and secrets from environment variables, never from committed files.
+- Manage dependencies and the virtualenv with `uv` (`pyproject.toml` + `uv.lock`); never `pip install` into the global interpreter.
+- Commit `uv.lock` (docs: check it into version control); add dependencies with `uv add`, not by editing versions by hand.
+- Format with `ruff format` and lint with `ruff check`; sort imports with the `I` rule (`ruff check --select I --fix`); do not mix in black/isort/flake8 unless the project already does.
+- Type-hint public functions (PEP 484 syntax); keep `mypy`/`pyright` clean if the project configures one.
+- Tests live in `tests/`, run with `pytest` (`uv run pytest`); one behavior per test, fixtures over setup code.
+- Use `logging` for events worth tracking; `print()` only for a CLI's ordinary output.
+- Never use mutable default arguments (use `None` and create the object inside); never use a bare `except:` (use `except Exception:`).
