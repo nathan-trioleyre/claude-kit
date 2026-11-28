@@ -87,7 +87,7 @@ claude-kit/
 │   ├── python/ csharp-dotnet/ angular/ typescript/ nextjs/ docker/ rust/   built-in profiles
 │   └── _TEMPLATE/              template for writing a profile by hand
 ├── skills/
-│   ├── claude-kit/             /claude-kit (+ scripts/apply.py)
+│   ├── claude-kit/             /claude-kit (+ scripts/apply.py CLI, logic in scripts/kitlib/)
 │   ├── claude-kit-refresh/     /claude-kit-refresh
 │   └── claude-kit-learn/       /claude-kit-learn
 └── tests/                      dependency-free unittest suite
