@@ -50,6 +50,26 @@ class TestInstall(unittest.TestCase):
             self.assertTrue((KIT / "skills" / "claude-kit" / "SKILL.md").is_file())
             self.assertFalse((claude_dir / "skills" / "claude-kit").is_symlink())
 
+    def test_uninstall_removes_only_kit_skills_and_config(self):
+        for mode in ((), ("--link",)):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
+                claude_dir = Path(tmp) / ".claude"
+                skills_dir = claude_dir / "skills"
+                (skills_dir / "third-party").mkdir(parents=True)
+                (skills_dir / "third-party" / "SKILL.md").write_text("custom", encoding="utf-8")
+                install(claude_dir, *mode)
+
+                res = install(claude_dir, "--uninstall")
+                self.assertIn("Done.", res.stdout)
+                for name in SKILLS:
+                    self.assertFalse((skills_dir / name).exists(), name)
+                    # removing a link must never delete the kit's own files
+                    self.assertTrue((KIT / "skills" / name / "SKILL.md").is_file(), name)
+                self.assertFalse((claude_dir / "claude-kit.json").exists())
+                self.assertTrue((skills_dir / "third-party" / "SKILL.md").is_file())
+
+                install(claude_dir, "--uninstall")  # idempotent when nothing is installed
+
 
 if __name__ == "__main__":
     unittest.main()

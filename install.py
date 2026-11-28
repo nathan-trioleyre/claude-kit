@@ -10,6 +10,9 @@ Two modes:
   --link    links the skills to this repository instead (symlink, or a junction on
             Windows): edits to SKILL.md files and apply.py are live, no reinstall needed.
 
+  --uninstall  removes the kit's skills and ~/.claude/claude-kit.json (other skills and
+               configured projects are left alone; use `apply.py uninstall` per project).
+
 Why store the path? Stack profiles and scripts stay in THIS repository (the single
 source of truth). When /claude-kit learns a new stack, it saves the profile here,
 in your Git repo.
@@ -61,15 +64,40 @@ def link_dir(src: Path, dest: Path) -> str:
     return "junction"
 
 
+def kit_skill_names() -> list:
+    return sorted(s.name for s in (KIT / "skills").iterdir() if (s / "SKILL.md").is_file())
+
+
+def uninstall(claude_dir: Path) -> None:
+    """Remove only what install.py created: the kit's skills (links or copies) and the kit config."""
+    skills_dest = claude_dir / "skills"
+    for name in kit_skill_names():
+        dest = skills_dest / name
+        if dest.exists() or dest.is_symlink():
+            remove_path(dest)  # a link/junction is removed without touching this repository
+            print(f"Removed skill: {dest}")
+    config = claude_dir / "claude-kit.json"
+    if config.is_file():
+        config.unlink()
+        print(f"Removed kit config: {config}")
+    print("\nDone. Projects configured with /claude-kit keep their files; "
+          "run `apply.py uninstall --project <path>` in each one first if you want them cleaned too.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--claude-dir", default=str(Path.home() / ".claude"),
                         help="Claude Code config directory (default: ~/.claude)")
     parser.add_argument("--link", action="store_true",
                         help="link skills to this repository instead of copying them")
+    parser.add_argument("--uninstall", action="store_true",
+                        help="remove the kit's skills and ~/.claude/claude-kit.json (projects are untouched)")
     args = parser.parse_args()
 
     claude_dir = Path(args.claude_dir).expanduser()
+    if args.uninstall:
+        uninstall(claude_dir)
+        return
     skills_dest = claude_dir / "skills"
     skills_dest.mkdir(parents=True, exist_ok=True)
 

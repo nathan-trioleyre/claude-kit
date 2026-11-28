@@ -71,6 +71,8 @@ python install.py --link     # links skills: edits in this repo take effect live
 `--link` creates a symlink (a junction on Windows). Without it, skills are copied and you need to re-run `python install.py` after editing a `SKILL.md`.
 Then, in any project: open Claude Code and type `/claude-kit`.
 
+To remove the kit from your machine: `python install.py --uninstall` (removes the kit's skills, links only, never this repository's files, and `~/.claude/claude-kit.json`). Configured projects keep their files: clean each one first with `/claude-kit uninstall` (or `apply.py uninstall --project <path>`).
+
 ## Repository layout
 
 ```text
