@@ -8,7 +8,7 @@ from pathlib import Path
 from .core import append_lines, read_text_lossy
 
 GITIGNORE_HEADER = "# Claude Code (local files)"
-EXCLUDE_HEADER = "# claude-kit (local)"
+EXCLUDE_HEADER = "# claude-devkit (local)"
 KIT_IGNORE_HEADERS = (GITIGNORE_HEADER, EXCLUDE_HEADER)
 # Files the kit (or its skills) generates that must never be committed.
 LOCAL_ARTIFACTS = [".claude/handoff.md", ".claude/settings.json.bak", ".claude/settings.local.json.bak"]

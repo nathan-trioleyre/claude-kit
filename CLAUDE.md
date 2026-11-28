@@ -1,10 +1,10 @@
-# claude-kit
+# claude-devkit
 
-Personal kit that configures Claude Code in any project (`/claude-kit`). See [README.md](README.md).
+Personal kit that configures Claude Code in any project (`/claude-devkit`). See [README.md](README.md).
 
 ## Commands
 - Test: `python -m unittest discover -s tests -v`
-- Validate profiles: `python skills/claude-kit/scripts/apply.py validate`
+- Validate profiles: `python skills/claude-devkit/scripts/apply.py validate`
 
 ## Git conventions
 - **Conventional Commits**: `type(scope): subject` in English, imperative, no trailing period.
@@ -13,6 +13,6 @@ Personal kit that configures Claude Code in any project (`/claude-kit`). See [RE
 - Commit directly on `main` (personal repo, no branch/PR workflow). Do not push unless asked.
 
 ## Rules
-- Changing `base/` → bump `VERSION`; changing a hook → bump its `claude-kit-hook-version` marker.
-- Profiles: `practices.md` max 15 lines, sourced from official docs, `last_verified` only after a real check (`/claude-kit-refresh`).
+- Changing `base/` → bump `VERSION`; changing a hook → bump its `claude-devkit-hook-version` marker.
+- Profiles: `practices.md` max 15 lines, sourced from official docs, `last_verified` only after a real check (`/claude-devkit-refresh`).
 - Write files containing backslashes with the Write tool, not shell heredocs (escapes get altered).

@@ -1,13 +1,13 @@
 ---
-name: claude-kit
-description: Configures Claude Code for the current project (CLAUDE.md, rules, permissions, hooks) by detecting its stack and reusing a claude-kit profile; also runs doctor, sync, and uninstall.
+name: claude-devkit
+description: Configures Claude Code for the current project (CLAUDE.md, rules, permissions, hooks) by detecting its stack and reusing a claude-devkit profile; also runs doctor, sync, and uninstall.
 disable-model-invocation: true
 argument-hint: "[local | doctor | sync | uninstall]"
 ---
 
-# /claude-kit: prepare Claude Code for this project
+# /claude-devkit: prepare Claude Code for this project
 
-You are configuring the current project from the user's **claude-kit** repository.
+You are configuring the current project from the user's **claude-devkit** repository.
 
 **Division of labor (important):**
 - The `apply.py` script handles everything mechanical that must stay identical across projects: detecting known profiles, validating profiles, copying hooks, merging `settings.json`, and generating `CLAUDE.md` / `.claude/rules/*.md`.
@@ -22,20 +22,20 @@ Only write into the project through `apply.py`, except when merging a user-appro
 **Modes** (from `$ARGUMENTS`):
 - empty: full setup, Steps 0 to 6 below.
 - `local`: full setup in stealth/personal mode for shared team repositories (pass `--local` to `APPLY apply`). Writes `CLAUDE.local.md` and `.claude/settings.local.json`, records exclusions in `.git/info/exclude`, and never touches `.gitignore`, team `CLAUDE.md`, or team `.claude/settings.json`. Later `sync` and `doctor` remember this mode automatically.
-- `doctor`: Step 0, then run `APPLY doctor --project .` and explain each `ISSUE` in plain English. Then propose the right fix: `sync` for outdated hooks/settings, a full `/claude-kit` for new stacks or refreshed profiles, Step 3b for a `tooling conflict`, and Step 3b (option "adopt the kit") to finish a migration reported as `finish the migration`. Write nothing yourself.
+- `doctor`: Step 0, then run `APPLY doctor --project .` and explain each `ISSUE` in plain English. Then propose the right fix: `sync` for outdated hooks/settings, a full `/claude-devkit` for new stacks or refreshed profiles, Step 3b for a `tooling conflict`, and Step 3b (option "adopt the kit") to finish a migration reported as `finish the migration`. Write nothing yourself.
 - `uninstall`: Step 0, then `APPLY uninstall --project . --dry-run`, summarize, ask for confirmation, re-run without `--dry-run`. It removes unmodified kit-managed files, kit hooks, kit-added permissions, kit ignore lines and `kit.json`; `CLAUDE.md`, `CLAUDE.local.md` and `.claude/rules/` are left for manual review (tell the user).
 - `sync`: Step 0, then `APPLY sync --project . --dry-run`, summarize, ask for confirmation, re-run without `--dry-run`. This refreshes kit-managed files only (settings, hooks, agents/commands/rules/skills, `.mcp.json`, `kit.json`); `CLAUDE.md` is not touched. Recorded tooling decisions are respected; a new undecided conflict is reported (`! CONFLICT`): resolve it with Step 3b (`APPLY decide`, then `sync`). If a hook is reported `skipped ... modified locally`, show the diff against the kit's copy and ask before using `--force-hooks`.
 
 ## Step 0: locate the kit
 
-Use `Read` on `~/.claude/claude-kit.json` to get `kit_path` and `python`. (The other kit skills reuse this step.)
+Use `Read` on `~/.claude/claude-devkit.json` to get `kit_path` and `python`. (The other kit skills reuse this step.)
 
 If it does not exist: tell the user to run `python install.py` (or `python install.py --link`) from the kit directory, and stop.
 
 Hereafter:
 - `KIT` = `kit_path`
 - `PY` = `python` from the config (or a working `python3`/`python`/`py -3`)
-- `APPLY` = `PY "KIT/skills/claude-kit/scripts/apply.py"`
+- `APPLY` = `PY "KIT/skills/claude-devkit/scripts/apply.py"`
 
 ## Step 1: understand the project (read-only)
 
@@ -67,8 +67,8 @@ After Steps 1 and 1b, show **one** summary table: detected stacks (with/without 
 Run `APPLY list`, then for each stack in the project:
 
 - **Existing and recent profile** (`stale: false`): use it as-is without re-researching. If the project uses a specific major version and `KIT/profiles/<stack>/versions/<major>.md` does not exist yet, check official docs for that version, write `versions/<major>.md` (8 lines max, version-specific rules only), validate with `APPLY validate --profiles <stack>`, and wait for user approval before saving.
-- **Existing but stale profile** (`stale: true`, older than 90 days, which also covers starter profiles shipped unverified): tell the user and offer to refresh it now (`/claude-kit-refresh` procedure) or continue with the old one.
-- **No profile**: do NOT research mid-setup. Generate `CLAUDE.md` without a profile (project commands and architecture only), then offer at the end to create the profile afterwards (same flow as `/claude-kit-refresh`: official docs, validate, show, save after approval). Only if the user asks for it right now, create it as follows:
+- **Existing but stale profile** (`stale: true`, older than 90 days, which also covers starter profiles shipped unverified): tell the user and offer to refresh it now (`/claude-devkit-refresh` procedure) or continue with the old one.
+- **No profile**: do NOT research mid-setup. Generate `CLAUDE.md` without a profile (project commands and architecture only), then offer at the end to create the profile afterwards (same flow as `/claude-devkit-refresh`: official docs, validate, show, save after approval). Only if the user asks for it right now, create it as follows:
   1. Search official documentation using `WebSearch` and `WebFetch` for **current** best practices (language, framework, tools). Tailor to what the project actually uses (e.g., `uv` or `poetry`, framework version read from the manifest).
   2. Write `profile.json` and `practices.md` following `KIT/profiles/_TEMPLATE/`. Constraints:
      - stack name in lowercase, no spaces (`python`, `csharp-dotnet`, `angular`);
@@ -142,7 +142,7 @@ If any `.proposed` file was created (`CLAUDE.md.proposed` or `.claude/rules/<sta
 Provide a brief summary:
 - what was created or modified in the project (ready to commit) and any new profile saved to the kit (`git -C KIT status`); for a stack without profile, offer to create it now;
 - any `CLAUDE.md` sections still marked `_To be completed._`;
-- restart the Claude Code session so hooks load (verify with `/hooks`); mention `/commit`, `/handoff`, `/review`, and `/claude-kit-learn` if "Lessons Learned" is filled.
+- restart the Claude Code session so hooks load (verify with `/hooks`); mention `/commit`, `/handoff`, `/review`, and `/claude-devkit-learn` if "Lessons Learned" is filled.
 
 ## Rules
 

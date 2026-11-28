@@ -1,5 +1,5 @@
 #!/bin/sh
-# claude-kit-hook-version: 3
+# claude-devkit-hook-version: 4
 # Portable Python 3 hook launcher for Claude Code (Linux, macOS, Windows Git Bash).
 # Invoked via: HOOK_SCRIPT=guard.py; . "$CLAUDE_PROJECT_DIR/.claude/hooks/run-hook.sh"
 
@@ -29,7 +29,7 @@ _find_python() {
     IFS="$_old_ifs"
 
     # Fall back to the Python executable recorded by install.py
-    for _cfg in "$HOME/.claude/claude-kit.json"; do
+    for _cfg in "$HOME/.claude/claude-devkit.json"; do
         if [ -f "$_cfg" ]; then
             _saved=$(sed -n 's/.*"python"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_cfg" | head -n 1 | sed 's/\\\\/\\/g')
             if [ -n "$_saved" ] && command -v cygpath >/dev/null 2>&1; then

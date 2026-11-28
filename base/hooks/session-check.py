@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """SessionStart hook: injects a concise one-line status if the project has pending kit actions,
 plus a pointer to `.claude/handoff.md` (written by /handoff) when it exists.
-# claude-kit-hook-version: 4
+# claude-devkit-hook-version: 5
 
 Fast and read-only: never modifies files, never blocks (always exits 0).
 """
@@ -83,7 +83,7 @@ def main() -> None:
         pass
 
     if notes:
-        print(f"claude-kit: {'; '.join(notes)}. Run /claude-kit doctor for details.")
+        print(f"claude-devkit: {'; '.join(notes)}. Run /claude-devkit doctor for details.")
 
 
 if __name__ == "__main__":

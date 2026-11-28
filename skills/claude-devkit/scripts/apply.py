@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""apply.py: the MECHANICAL part of /claude-kit (what must stay deterministic).
+"""apply.py: the MECHANICAL part of /claude-devkit (what must stay deterministic).
 
 Subcommands:
   list      lists known stack profiles in the kit, along with their age

@@ -190,7 +190,7 @@ def write_kit_json(project: Path, profiles: list, previous: dict, managed: dict,
     else:
         stop_verify = bool(verify_cmd)
     kit_json = {
-        "generated_by": "claude-kit",
+        "generated_by": "claude-devkit",
         "kit_version": KIT_VERSION,
         "date": date.today().isoformat(),
         "local": local,
@@ -237,7 +237,7 @@ def run(project: Path, profile_names: list, ctx: dict, dry: bool, *, full: bool,
     profiles = [effective[name] for name in profile_names]
     for p in profiles:
         if age_days(p) > STALE_DAYS:
-            report.append(f"! profile '{p['stack']}' is stale or unverified ({age_days(p)}d): consider /claude-kit-refresh {p['stack']}")
+            report.append(f"! profile '{p['stack']}' is stale or unverified ({age_days(p)}d): consider /claude-devkit-refresh {p['stack']}")
 
     rule_labels = []
     effective_versions = {
@@ -345,7 +345,7 @@ def cmd_sync(args) -> None:
     project = Path(args.project).resolve()
     previous = preflight(project)
     if not previous:
-        raise SystemExit("No .claude/kit.json: this project was never configured. Run /claude-kit (apply) first.")
+        raise SystemExit("No .claude/kit.json: this project was never configured. Run /claude-devkit (apply) first.")
     names = args.profiles or [n for n in previous.get("profiles", {}) if (PROFILES / n / "profile.json").is_file()]
     emit(run(project, names, {}, args.dry_run, full=False,
              force_hooks=args.force_hooks, use_org=not args.no_org,
@@ -356,7 +356,7 @@ def cmd_decide(args) -> None:
     project = Path(args.project).resolve()
     kit_json = load_kit_json(project)
     if not kit_json:
-        raise SystemExit("No .claude/kit.json: run /claude-kit (apply) first, or pass decisions in its context.")
+        raise SystemExit("No .claude/kit.json: run /claude-devkit (apply) first, or pass decisions in its context.")
     if args.profile not in kit_json.get("profiles", {}) or not (PROFILES / args.profile / "profile.json").is_file():
         raise SystemExit(f"Profile '{args.profile}' is not configured in this project.")
     profile = load_profile(args.profile)

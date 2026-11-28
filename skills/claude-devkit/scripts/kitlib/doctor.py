@@ -31,7 +31,7 @@ def cmd_doctor(args) -> None:
     kit_json = preflight(project)
     issues, oks = [], []
     if not kit_json:
-        print("ISSUE: no .claude/kit.json: project not configured. Run /claude-kit.")
+        print("ISSUE: no .claude/kit.json: project not configured. Run /claude-devkit.")
         raise SystemExit(1)
 
     if kit_json.get("kit_version") != KIT_VERSION:
@@ -66,7 +66,7 @@ def cmd_doctor(args) -> None:
         names = ", ".join(e["name"] for e in a["existing"])
         if a["status"] == "pending":
             issues.append(f"tooling conflict {label}: project uses {names}, kit prefers {a['kit']['name']}, no decision recorded: "
-                          "run /claude-kit (or `apply.py decide`)")
+                          "run /claude-devkit (or `apply.py decide`)")
         elif a["status"] == "migration_pending":
             issues.append(f"{label}: kit adopted but {names} is still configured ("
                           + "; ".join(ev for e in a["existing"] for ev in e["evidence"]) + "): finish the migration")
@@ -97,14 +97,14 @@ def cmd_doctor(args) -> None:
             continue
         p = load_profile(name)
         if age_days(p) > STALE_DAYS:
-            issues.append(f"profile '{name}' is stale/unverified ({age_days(p)}d): /claude-kit-refresh {name}")
+            issues.append(f"profile '{name}' is stale/unverified ({age_days(p)}d): /claude-devkit-refresh {name}")
         if p["last_verified"] != info.get("last_verified"):
-            issues.append(f"profile '{name}' was refreshed in the kit since this project was set up: re-run /claude-kit")
+            issues.append(f"profile '{name}' was refreshed in the kit since this project was set up: re-run /claude-devkit")
 
     detected = detect_matched(project)
     for name in detected:
         if name not in kit_json.get("profiles", {}):
-            issues.append(f"stack '{name}' detected but not configured: re-run /claude-kit")
+            issues.append(f"stack '{name}' detected but not configured: re-run /claude-devkit")
 
     md_rel = "CLAUDE.local.md" if is_local else "CLAUDE.md"
     claude_md = project / md_rel
@@ -123,7 +123,7 @@ def cmd_doctor(args) -> None:
     harness_stats = _read_harness_stats(project)
     if harness_stats["total_blocks"]:
         for rec in harness_stats["recurring"]:
-            issues.append(f"harness.log shows {rec['count']}x blocks for '{rec['key']}': add an explicit rule + alternative in CLAUDE.md via /claude-kit-learn")
+            issues.append(f"harness.log shows {rec['count']}x blocks for '{rec['key']}': add an explicit rule + alternative in CLAUDE.md via /claude-devkit-learn")
         if not harness_stats["recurring"]:
             oks.append(f"harness.log: {harness_stats['total_blocks']} logged block(s), no recurring pattern (>={HARNESS_RECURRING_THRESHOLD})")
 

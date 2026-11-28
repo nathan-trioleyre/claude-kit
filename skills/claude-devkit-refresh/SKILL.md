@@ -1,17 +1,17 @@
 ---
-name: claude-kit-refresh
-description: Updates one or more stack profiles in claude-kit by re-reading their official sources and checking for recent changes (new versions, deprecated tools, modified commands). Use when the user types /claude-kit-refresh, or when a profile is flagged as stale.
+name: claude-devkit-refresh
+description: Updates one or more stack profiles in claude-devkit by re-reading their official sources and checking for recent changes (new versions, deprecated tools, modified commands). Use when the user types /claude-devkit-refresh, or when a profile is flagged as stale.
 disable-model-invocation: true
 argument-hint: "[stack | all]"
 ---
 
-# /claude-kit-refresh: keep profiles up to date
+# /claude-devkit-refresh: keep profiles up to date
 
 Argument: `$ARGUMENTS` = a stack name (e.g., `python`) or `all`. If empty, run `APPLY list` and ask which stack to refresh.
 
 ## Step 0: locate the kit
 
-Do Step 0 of `/claude-kit`: `Read` `~/.claude/claude-kit.json` to get `kit_path` (`KIT`) and `python` (`PY`, or a working `python3`/`python`/`py -3`). Then `APPLY` = `PY "KIT/skills/claude-kit/scripts/apply.py"`. Run `APPLY list` to see profiles and their age.
+Do Step 0 of `/claude-devkit`: `Read` `~/.claude/claude-devkit.json` to get `kit_path` (`KIT`) and `python` (`PY`, or a working `python3`/`python`/`py -3`). Then `APPLY` = `PY "KIT/skills/claude-devkit/scripts/apply.py"`. Run `APPLY list` to see profiles and their age.
 
 ## Step 1: target
 
@@ -41,7 +41,7 @@ Wait for approval (the user may accept only part of the changes). Then apply the
 ## Step 4: wrap up
 
 - Remind the user to commit the change in the kit repository.
-- Clarify that **already-configured projects are not modified automatically**: `/claude-kit sync` refreshes a project's permissions and hooks (backing up existing settings to `.bak`), and re-running `/claude-kit` writes a proposed `CLAUDE.md.proposed` if the generated content changed (never overwriting existing content). `/claude-kit doctor` lists the projects' drift.
+- Clarify that **already-configured projects are not modified automatically**: `/claude-devkit sync` refreshes a project's permissions and hooks (backing up existing settings to `.bak`), and re-running `/claude-devkit` writes a proposed `CLAUDE.md.proposed` if the generated content changed (never overwriting existing content). `/claude-devkit doctor` lists the projects' drift.
 
 ## Rules
 

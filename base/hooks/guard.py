@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """PreToolUse hook: blocks destructive actions BEFORE they execute.
-# claude-kit-hook-version: 5
+# claude-devkit-hook-version: 6
 
 Claude Code passes JSON on stdin (tool name + tool parameters).
 Exiting with code 2 blocks the action and sends stderr back to Claude.

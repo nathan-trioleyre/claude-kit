@@ -1,14 +1,14 @@
 ---
-name: claude-kit-learn
-description: Promotes durable lessons from the current project's CLAUDE.md "Lessons Learned" section into the claude-kit (a stack profile's practices.md, the org layer, or base rules), after your approval. Use when the user types /claude-kit-learn or wants lessons from a project to benefit all projects.
+name: claude-devkit-learn
+description: Promotes durable lessons from the current project's CLAUDE.md "Lessons Learned" section into the claude-devkit (a stack profile's practices.md, the org layer, or base rules), after your approval. Use when the user types /claude-devkit-learn or wants lessons from a project to benefit all projects.
 disable-model-invocation: true
 ---
 
-# /claude-kit-learn: make the kit smarter from real projects
+# /claude-devkit-learn: make the kit smarter from real projects
 
 ## Step 0: locate the kit
 
-Do Step 0 of `/claude-kit` (`Read` `~/.claude/claude-kit.json` for `kit_path` = `KIT` and `python` = `PY`; `APPLY` = `PY "KIT/skills/claude-kit/scripts/apply.py"`).
+Do Step 0 of `/claude-devkit` (`Read` `~/.claude/claude-devkit.json` for `kit_path` = `KIT` and `python` = `PY`; `APPLY` = `PY "KIT/skills/claude-devkit/scripts/apply.py"`).
 
 ## Step 1: collect candidates
 
@@ -33,7 +33,7 @@ The project's `CLAUDE.md` is the source: lessons are **promoted from the project
 1. Show the user a table: lesson, destination, exact line to add (and line to remove if needed).
 2. Wait for approval of each item. Apply only the approved ones.
 3. Run `APPLY validate` after editing a profile; fix errors.
-4. Remind the user to commit in the kit repository and to run `/claude-kit sync` in other projects (or re-run `/claude-kit` for `CLAUDE.md` changes).
+4. Remind the user to commit in the kit repository and to run `/claude-devkit sync` in other projects (or re-run `/claude-devkit` for `CLAUDE.md` changes).
 
 ## Rules
 

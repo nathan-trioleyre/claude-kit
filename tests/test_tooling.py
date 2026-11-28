@@ -18,7 +18,7 @@ def kit_with_real_profiles(tmp: Path, *stacks: str) -> Path:
 
 
 def apply_bin_of(kit: Path) -> Path:
-    return kit / "skills" / "claude-kit" / "scripts" / "apply.py"
+    return kit / "skills" / "claude-devkit" / "scripts" / "apply.py"
 
 
 def write(path: Path, text: str) -> None:
@@ -392,7 +392,7 @@ class TestToolingConflicts(unittest.TestCase):
         return kit, apply_bin_of(kit)
 
     def test_unsafe_permission_allows_runner_with_specific_tool_only(self):
-        scripts = str(KIT / "skills" / "claude-kit" / "scripts")
+        scripts = str(KIT / "skills" / "claude-devkit" / "scripts")
         if scripts not in sys.path:
             sys.path.insert(0, scripts)
         from kitlib.core import unsafe_permission
@@ -951,7 +951,7 @@ class TestRunnerPlaceholder(unittest.TestCase):
 
     @staticmethod
     def _effective(stack: str, files: dict, decisions: dict | None = None) -> dict:
-        scripts = str(KIT / "skills" / "claude-kit" / "scripts")
+        scripts = str(KIT / "skills" / "claude-devkit" / "scripts")
         if scripts not in sys.path:
             sys.path.insert(0, scripts)
         from kitlib.core import load_profile
@@ -1000,7 +1000,7 @@ class TestRunnerPlaceholder(unittest.TestCase):
         self.assertIn("yarn tsc -b", eff["commands"]["verify"])
 
     def test_profile_without_runner_gets_bare_tool(self):
-        scripts = str(KIT / "skills" / "claude-kit" / "scripts")
+        scripts = str(KIT / "skills" / "claude-devkit" / "scripts")
         if scripts not in sys.path:
             sys.path.insert(0, scripts)
         from kitlib.tooling import substitute_runner
@@ -1013,7 +1013,7 @@ class TestRunnerPlaceholder(unittest.TestCase):
         self.assertNotIn("{run}", json.dumps(eff["commands"]))
 
     def test_no_placeholder_leaks_in_any_real_profile(self):
-        scripts = str(KIT / "skills" / "claude-kit" / "scripts")
+        scripts = str(KIT / "skills" / "claude-devkit" / "scripts")
         if scripts not in sys.path:
             sys.path.insert(0, scripts)
         from kitlib.core import profile_dirs
@@ -1024,7 +1024,7 @@ class TestRunnerPlaceholder(unittest.TestCase):
                 self.assertNotIn("{run}", dumped)
 
     def test_validate_expands_runner_in_permissions(self):
-        scripts = str(KIT / "skills" / "claude-kit" / "scripts")
+        scripts = str(KIT / "skills" / "claude-devkit" / "scripts")
         if scripts not in sys.path:
             sys.path.insert(0, scripts)
         from kitlib.core import unsafe_permission
@@ -1040,7 +1040,7 @@ class TestRunnerPlaceholder(unittest.TestCase):
         self.assertIsNotNone(unsafe_permission("Bash(npx *)"))
 
     def test_verify_steps_match_default_verify_in_real_profiles(self):
-        scripts = str(KIT / "skills" / "claude-kit" / "scripts")
+        scripts = str(KIT / "skills" / "claude-devkit" / "scripts")
         if scripts not in sys.path:
             sys.path.insert(0, scripts)
         from kitlib.core import load_profile, profile_dirs

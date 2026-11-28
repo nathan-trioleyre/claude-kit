@@ -16,4 +16,4 @@ argument-hint: "[optional focus or next step]"
    - `## Gotchas`: blockers, failing checks, workarounds, decisions worth remembering.
    - `## Branch`: branch name and uncommitted state.
 3. The file is gitignored by the kit (or in `.git/info/exclude` in local mode); never commit it. The SessionStart hook prints a pointer to it in the next session.
-4. Show the note and tell the user they can safely `/clear`. Suggest `/claude-kit-learn` if a gotcha is durable.
+4. Show the note and tell the user they can safely `/clear`. Suggest `/claude-devkit-learn` if a gotcha is durable.

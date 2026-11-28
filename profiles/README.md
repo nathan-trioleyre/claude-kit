@@ -1,6 +1,6 @@
 # Stack Profiles
 
-One folder per stack (`python/`, `csharp-dotnet/`, `angular/`, …), created by `/claude-kit` the first time it encounters a stack, then reused across subsequent projects.
+One folder per stack (`python/`, `csharp-dotnet/`, `angular/`, …), created by `/claude-devkit` the first time it encounters a stack, then reused across subsequent projects.
 
 Each profile contains:
 - `profile.json`: machine-readable metadata (detection entries, commands, permissions, format rules, optional `paths` for `.claude/rules/<stack>.md`, optional `supersedes`, optional `tooling` conflict detection, sources, `last_verified` date).
@@ -10,7 +10,7 @@ Each profile contains:
 Rules:
 - A profile is only saved after validation (`apply.py validate`) and your approval.
 - Every profile cites its sources (official documentation preferred).
-- A profile older than 90 days is flagged as stale: `/claude-kit-refresh <stack>`.
+- A profile older than 90 days is flagged as stale: `/claude-devkit-refresh <stack>`.
 - Copy `_TEMPLATE/` to author one by hand.
 
 ## `detect`: how a profile is matched

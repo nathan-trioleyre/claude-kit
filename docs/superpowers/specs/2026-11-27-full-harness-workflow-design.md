@@ -5,26 +5,26 @@ Status: Ready for approval
 
 ## Intent & Why
 
-Today, `claude-kit` provides deterministic execution hooks (`format.py` on `PostToolUse`, `verify-stop.py` on `Stop`, `guard.py` on `PreToolUse`) and detects competing tools on already-configured projects (`tooling` in `profile.json`). However:
+Today, `claude-devkit` provides deterministic execution hooks (`format.py` on `PostToolUse`, `verify-stop.py` on `Stop`, `guard.py` on `PreToolUse`) and detects competing tools on already-configured projects (`tooling` in `profile.json`). However:
 1. Profiles do not ship strict, opinionated linter/formatter/static-analysis configurations (`eslint.config.mjs`, `ruff.toml`, `.globalconfig`, `[lints.clippy]`, etc.).
-2. When `/claude-kit` lands on a project with **no** linter configured, it writes default commands (`npm run lint`, `uv run ruff check .`) without checking whether a real linter config exists or offering to install one.
+2. When `/claude-devkit` lands on a project with **no** linter configured, it writes default commands (`npm run lint`, `uv run ruff check .`) without checking whether a real linter config exists or offering to install one.
 3. `PostToolUse` only runs formatting (`format_rules`), leaving lint issues to be caught only at turn end (`verify-stop.py`), and `base/` does not yet provide reusable agentic workflow pieces (`review` agent/skill, universal `.editorconfig`, optional git pre-commit hook).
 
-The goal is to make `/claude-kit` deliver a complete baseline workflow (**AI + deterministic tooling**) so that style, types, dead code, complexity, and common bugs are caught deterministically at 0 LLM tokens, while keeping Claude focused on architecture, tests, and domain logic.
+The goal is to make `/claude-devkit` deliver a complete baseline workflow (**AI + deterministic tooling**) so that style, types, dead code, complexity, and common bugs are caught deterministically at 0 LLM tokens, while keeping Claude focused on architecture, tests, and domain logic.
 
 ## Goals
 
 - Equip every built-in stack profile (`python`, `typescript`, `nextjs`, `angular`, `csharp-dotnet`, `rust`, `docker`) with strict, officially-sourced linter/formatter/static-analysis presets tailored as AI-code guardrails.
-- Extend `apply.py audit`, `apply`, and `doctor` to detect **missing** tooling (not only conflicting tooling) and let `/claude-kit` propose installing the kit's preset + dev dependencies + scripts with explicit user approval.
+- Extend `apply.py audit`, `apply`, and `doctor` to detect **missing** tooling (not only conflicting tooling) and let `/claude-devkit` propose installing the kit's preset + dev dependencies + scripts with explicit user approval.
 - Speed up the inner AI feedback loop by supporting optional fast, auto-fixable per-file lint checks in `base/hooks/format.py` (`PostToolUse`) alongside formatting.
 - Add lightweight reusable workflow assets in `base/` (isolated `/review` skill + agent, universal `.editorconfig` preset, optional `.githooks/pre-commit`) using existing kit conventions without bloating `CLAUDE.md`.
 
 ## Non-Goals
 
 - **No silent modification of existing projects**: projects that already configure their own linter/formatter continue through the existing `audit` / `decide` (`keep_existing` | `adopt_kit` | `keep_both`) workflow without forced migration.
-- **No forced syncing of project-owned linter configs**: once scaffolded into a project, linter/formatter config files belong to the project and are never overwritten by `/claude-kit sync`.
+- **No forced syncing of project-owned linter configs**: once scaffolded into a project, linter/formatter config files belong to the project and are never overwritten by `/claude-devkit sync`.
 - **No bloat in `CLAUDE.md` or `practices.md`**: linter rules live in linter config files, not in prompt text (`practices.md` stays <= 15 lines; `CLAUDE.md` stays <= 80 lines).
-- **No repo pollution in `--local` mode**: `/claude-kit local` must never create or edit project-wide linter configs, `package.json`, `pyproject.toml`, `.editorconfig`, or `.githooks/`.
+- **No repo pollution in `--local` mode**: `/claude-devkit local` must never create or edit project-wide linter configs, `package.json`, `pyproject.toml`, `.editorconfig`, or `.githooks/`.
 
 ## Anti-Goals
 
@@ -34,10 +34,10 @@ The goal is to make `/claude-kit` deliver a complete baseline workflow (**AI + d
 
 ## Constraints
 
-- `skills/claude-kit/scripts/apply.py` and `base/hooks/*.py` must remain dependency-free Python 3.9+ (stdlib only) and cross-platform (Windows + Linux/macOS).
+- `skills/claude-devkit/scripts/apply.py` and `base/hooks/*.py` must remain dependency-free Python 3.9+ (stdlib only) and cross-platform (Windows + Linux/macOS).
 - Existing `apply.py` invariants hold: `--dry-run` writes nothing; existing files (`CLAUDE.md`, `.claude/rules/*.md`, and any scaffolded config files) are never silently overwritten; `apply.py validate` enforces schema and permission safety.
-- Modifying `base/` requires bumping `VERSION`; modifying `base/hooks/format.py` requires bumping its `claude-kit-hook-version` marker.
-- `tests/` unittest suite must remain dependency-free and pass (`python -m unittest discover -s tests -v`), plus `python skills/claude-kit/scripts/apply.py validate`.
+- Modifying `base/` requires bumping `VERSION`; modifying `base/hooks/format.py` requires bumping its `claude-devkit-hook-version` marker.
+- `tests/` unittest suite must remain dependency-free and pass (`python -m unittest discover -s tests -v`), plus `python skills/claude-devkit/scripts/apply.py validate`.
 
 ## Approaches Considered
 
@@ -93,7 +93,7 @@ Presets explicitly target the failure modes of AI-generated code so prompt space
 - Explicit error handling (no silent empty `catch`/`except`, no unawaited promises).
 - Basic static security checks (unsafe eval/exec patterns, hardcoded secret patterns where supported by the linter).
 
-### 3. Missing-Tooling Detection, `effective_profile`, & Guided Installation (`apply.py` + `/claude-kit`)
+### 3. Missing-Tooling Detection, `effective_profile`, & Guided Installation (`apply.py` + `/claude-devkit`)
 
 Today `analyze_tooling()` sets `status = "none"` whenever no alternative is found — even when `kit_evidence` is also empty.
 
@@ -110,7 +110,7 @@ Changes in `apply.py`:
   2. Merges `scripts` into `package.json` deterministically if `package.json` exists, adding only keys not already present.
   3. Prints any `mode: "snippet"` files (e.g. `pyproject.toml`, `Cargo.toml`) so Claude can merge them with user approval (preserving `apply.py`'s stdlib-only zero-dependency constraint). *(Our call.)*
 
-Workflow order in `skills/claude-kit/SKILL.md` *(Our call)*:
+Workflow order in `skills/claude-devkit/SKILL.md` *(Our call)*:
 - Run `audit` in Step 1b.
 - Settle both `pending_conflicts` AND `missing_tooling` **before** `apply.py apply` (skipping `missing_tooling` entirely in `--local` mode):
   - For each `missing_tooling` item, one at a time, Claude presents the preset (tools, key rules, files to create, packages/scripts to add) and asks: install preset or skip.
@@ -120,7 +120,7 @@ Workflow order in `skills/claude-kit/SKILL.md` *(Our call)*:
 ### 4. Fast Post-Edit Inner Loop (`base/hooks/format.py` + `kit.json`)
 
 - `write_kit_json` in `apply.py` records `lint_rules` alongside `format_rules`, populated from active concerns whose `post_edit_check` is present and active (`effective` is `adopt_kit` / `keep_both`, or an alternative providing one when `keep_existing`).
-- `base/hooks/format.py` (bump `claude-kit-hook-version` and repo `VERSION`):
+- `base/hooks/format.py` (bump `claude-devkit-hook-version` and repo `VERSION`):
   1. Runs matching `format_rules` on the edited file (existing behavior).
   2. Runs matching `lint_rules` on the edited file with a short timeout (e.g. 10s), resolving executables from project-local `.venv` / `node_modules/.bin` first (`resolve_executable`).
   3. Remains **non-blocking** (`exit 0`) so Claude is never deadlocked mid-edit, while printing concise remaining lint diagnostics (capped to a small line budget on `stderr`) so Claude sees and fixes them on its very next step instead of waiting for `Stop`.
@@ -132,15 +132,15 @@ Workflow order in `skills/claude-kit/SKILL.md` *(Our call)*:
    - Synced automatically into `.claude/agents/` and `.claude/skills/` via `sync_extras` (never bloats `CLAUDE.md`).
    - Invoked on demand or before `/commit`: spawns an isolated reviewer subagent (`code-reviewer`) over `git diff` to check test coverage, edge cases, boundary validation, security, and adherence to `CLAUDE.md` invariants — explicitly skipping style/lint concerns already enforced by deterministic tools.
 2. **Universal `.editorconfig` preset (`base/presets/.editorconfig`)** *(Our call)*:
-   - Not auto-copied silently by `sync_extras`; offered non-destructively during `/claude-kit` setup when root `.editorconfig` is missing (skipped in `--local` mode).
+   - Not auto-copied silently by `sync_extras`; offered non-destructively during `/claude-devkit` setup when root `.editorconfig` is missing (skipped in `--local` mode).
 3. **Zero-dependency `.githooks/pre-commit` template (`base/presets/pre-commit`)** *(Our call)*:
    - Chosen over `lefthook.yml` so no extra binary installation is required.
-   - Offered during `/claude-kit` only when no existing git hook setup (`.husky/`, `.pre-commit-config.yaml`, `lefthook.yml`, `.githooks/`) is detected and mode is not `local`.
+   - Offered during `/claude-devkit` only when no existing git hook setup (`.husky/`, `.pre-commit-config.yaml`, `lefthook.yml`, `.githooks/`) is detected and mode is not `local`.
    - Upon approval, copies `.githooks/pre-commit` (running fast staged/project lint+format checks) and instructs/runs `git config core.hooksPath .githooks` locally (noting that `core.hooksPath` is per-clone).
 
 ### 6. Left to the Builder
 
 - Exact rule lists inside each profile's preset files, provided every rule set is grounded in current official tool documentation (and `sources` / `last_verified` are updated in `profile.json`).
 - Exact `stderr` line cap for `lint_rules` output in `format.py` and execution order between `format_rules` and `lint_rules` per file.
-- Exact UI phrasing in `skills/claude-kit/SKILL.md` for walking through `missing_tooling` and `.editorconfig`/`.githooks/pre-commit`, and internal helper layout in `apply.py`.
+- Exact UI phrasing in `skills/claude-devkit/SKILL.md` for walking through `missing_tooling` and `.editorconfig`/`.githooks/pre-commit`, and internal helper layout in `apply.py`.
 - Exact wording of `base/agents/code-reviewer.md` and `base/skills/review/SKILL.md` (keeping them concise and consistent with `base/skills/commit/SKILL.md` and `base/skills/handoff/SKILL.md`).

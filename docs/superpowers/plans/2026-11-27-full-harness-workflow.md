@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Equip `claude-kit` with strict per-language linter/formatter/static-analysis presets, missing-tooling detection and guided scaffolding, fast post-edit lint feedback, and reusable `base/` workflow assets (`/review`, `.editorconfig`, `.githooks/pre-commit`).
+**Goal:** Equip `claude-devkit` with strict per-language linter/formatter/static-analysis presets, missing-tooling detection and guided scaffolding, fast post-edit lint feedback, and reusable `base/` workflow assets (`/review`, `.editorconfig`, `.githooks/pre-commit`).
 
 **Architecture:** Extend `profile.json`'s `tooling[]` schema (`preset_files`, `install_packages`, `scripts`, `post_edit_check`, `only_when_installed`) and top-level `verify_steps`, update `apply.py` (`validate`, `audit`, `doctor`, `effective_profile`, `write_kit_json`, and new `scaffold-tooling`) while staying stdlib-only, extend `base/hooks/format.py` with bounded `lint_rules`, and add `base/` workflow bricks plus presets across all 7 built-in profiles.
 
@@ -12,10 +12,10 @@
 
 ## Global Constraints
 
-- `skills/claude-kit/scripts/apply.py` and `base/hooks/*.py` must remain dependency-free Python 3.9+ (stdlib only) and cross-platform (Windows + Linux/macOS).
+- `skills/claude-devkit/scripts/apply.py` and `base/hooks/*.py` must remain dependency-free Python 3.9+ (stdlib only) and cross-platform (Windows + Linux/macOS).
 - Existing `apply.py` invariants hold: `--dry-run` writes nothing; existing files (`CLAUDE.md`, `.claude/rules/*.md`, and any scaffolded config files) are never silently overwritten; `apply.py validate` enforces schema and permission safety.
-- Modifying `base/` requires bumping `VERSION`; modifying `base/hooks/format.py` requires bumping its `claude-kit-hook-version` marker.
-- `tests/` unittest suite must remain dependency-free and pass (`python -m unittest discover -s tests -v`), plus `python skills/claude-kit/scripts/apply.py validate`.
+- Modifying `base/` requires bumping `VERSION`; modifying `base/hooks/format.py` requires bumping its `claude-devkit-hook-version` marker.
+- `tests/` unittest suite must remain dependency-free and pass (`python -m unittest discover -s tests -v`), plus `python skills/claude-devkit/scripts/apply.py validate`.
 - `practices.md` <= 15 non-empty lines; `CLAUDE.md` <= 80 lines; `--local` mode never creates or edits repo-wide configs (`package.json`, `pyproject.toml`, `.editorconfig`, `.githooks/`, linter presets).
 
 ## Review Focus
@@ -31,7 +31,7 @@
 ### Task 1: Extended `tooling` & `verify_steps` Schema Validation
 
 **Files:**
-- Modify: `skills/claude-kit/scripts/apply.py:186-367`
+- Modify: `skills/claude-devkit/scripts/apply.py:186-367`
 - Modify: `profiles/README.md`
 - Modify: `profiles/_TEMPLATE/profile.json`
 - Test: `tests/test_tooling.py`
@@ -57,7 +57,7 @@ Add tests covering:
 Run: `python -m unittest tests.test_tooling -v`
 Expected: FAIL on new tests (validation ignores/rejects new fields or lacks path/command checks).
 
-- [ ] **Step 3: Implement schema validation in `skills/claude-kit/scripts/apply.py` and document in `profiles/README.md` & `profiles/_TEMPLATE/profile.json`**
+- [ ] **Step 3: Implement schema validation in `skills/claude-devkit/scripts/apply.py` and document in `profiles/README.md` & `profiles/_TEMPLATE/profile.json`**
 
 In `apply.py`:
 - Add helper `_validate_preset_files(prefix: str, folder: Path, items) -> list[str]` checking relative path bounds (`resolve()` strictly inside `folder`), existence of `src`, safe relative `dest` (no `..`, not absolute, not matching protected secret filenames like `.env*`, `*.pem`, `*.key`, `credentials.json`), and `mode in ("create", "snippet")`.
@@ -68,13 +68,13 @@ In `apply.py`:
 
 - [ ] **Step 4: Run tests and `validate` to verify pass**
 
-Run: `python -m unittest tests.test_tooling -v && python skills/claude-kit/scripts/apply.py validate`
+Run: `python -m unittest tests.test_tooling -v && python skills/claude-devkit/scripts/apply.py validate`
 Expected: PASS (all existing + new tests green, `OK: validated 7 profile(s).`).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add skills/claude-kit/scripts/apply.py profiles/README.md profiles/_TEMPLATE/profile.json tests/test_tooling.py
+git add skills/claude-devkit/scripts/apply.py profiles/README.md profiles/_TEMPLATE/profile.json tests/test_tooling.py
 git commit -m "feat(apply): validate preset_files, post_edit_check, and verify_steps in profiles"
 ```
 
@@ -83,7 +83,7 @@ git commit -m "feat(apply): validate preset_files, post_edit_check, and verify_s
 ### Task 2: Missing-Tooling Detection, `"skip"` Decision, `verify_steps` Filtering, & `doctor` `WARN` Tier
 
 **Files:**
-- Modify: `skills/claude-kit/scripts/apply.py:453-623, 1040-1055, 1260-1305, 1420-1463`
+- Modify: `skills/claude-devkit/scripts/apply.py:453-623, 1040-1055, 1260-1305, 1420-1463`
 - Test: `tests/test_tooling.py`
 
 **Interfaces:**
@@ -107,7 +107,7 @@ Add tests covering:
 Run: `python -m unittest tests.test_tooling -v`
 Expected: FAIL on the 4 new tests.
 
-- [ ] **Step 3: Implement missing detection, `skip` / `only_when_installed` withholding, `verify_steps` resolution, and `doctor` `WARN` tier in `skills/claude-kit/scripts/apply.py`**
+- [ ] **Step 3: Implement missing detection, `skip` / `only_when_installed` withholding, `verify_steps` resolution, and `doctor` `WARN` tier in `skills/claude-devkit/scripts/apply.py`**
 
 - In `analyze_tooling`: when `existing` is empty, if `recorded` has `choice == "skip"` -> `status = "resolved", effective = "skip"`; elif `kit_evidence` is empty and (`kit.get("preset_files")` or `kit.get("install_packages")` or `kit.get("scripts")`) -> `status = "missing", effective = ("skip" if kit.get("only_when_installed") else "adopt_kit")`; else `status = "none", effective = ("skip" if kit.get("only_when_installed") and not kit_evidence else "adopt_kit")`.
 - In `effective_profile`: apply the same withholding logic to concerns whose `effective == "skip"` (withhold owned `commands`, `permissions`, `format_rules`, `post_edit_check`, `practice_terms`, without injecting a `"Keep the project's own..."` line). When `verify_steps` is present on the profile, compute `eff["commands"]["verify"]` by joining active steps (keeping steps whose `concern` is `None` or not withheld, or replaced if `keep_existing` supplied a `verify` override) with `" && "`.
@@ -122,7 +122,7 @@ Expected: PASS (all existing tests including `test_no_competing_tool_means_no_co
 - [ ] **Step 5: Commit**
 
 ```bash
-git add skills/claude-kit/scripts/apply.py tests/test_tooling.py
+git add skills/claude-devkit/scripts/apply.py tests/test_tooling.py
 git commit -m "feat(apply): detect missing tooling, support skip and verify_steps, warn in doctor"
 ```
 
@@ -131,7 +131,7 @@ git commit -m "feat(apply): detect missing tooling, support skip and verify_step
 ### Task 3: `apply.py scaffold-tooling` Subcommand & `base/presets/` Scaffolding
 
 **Files:**
-- Modify: `skills/claude-kit/scripts/apply.py` (add `scaffold_tooling`, `cmd_scaffold_tooling`, CLI parser)
+- Modify: `skills/claude-devkit/scripts/apply.py` (add `scaffold_tooling`, `cmd_scaffold_tooling`, CLI parser)
 - Create: `base/presets/.editorconfig`
 - Create: `base/presets/pre-commit`
 - Test: `tests/test_tooling.py`
@@ -154,7 +154,7 @@ Add tests covering:
 Run: `python -m unittest tests.test_tooling -v`
 Expected: FAIL (`invalid choice: 'scaffold-tooling'`).
 
-- [ ] **Step 3: Implement `base/presets/.editorconfig`, `base/presets/pre-commit`, and `cmd_scaffold_tooling` in `skills/claude-kit/scripts/apply.py`**
+- [ ] **Step 3: Implement `base/presets/.editorconfig`, `base/presets/pre-commit`, and `cmd_scaffold_tooling` in `skills/claude-devkit/scripts/apply.py`**
 
 - Create concise universal `base/presets/.editorconfig` (UTF-8, LF default, 2/4 space conventions by extension, trim trailing whitespace, final newline).
 - Create zero-dependency POSIX sh `base/presets/pre-commit` (detects staged files and runs available project format/lint checks fast: `ruff`, `npm run lint` / `eslint` / `prettier`, `dotnet format --verify-no-changes`, `cargo fmt --check`, etc., exiting non-zero on failure).
@@ -173,7 +173,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add skills/claude-kit/scripts/apply.py base/presets/.editorconfig base/presets/pre-commit tests/test_tooling.py
+git add skills/claude-devkit/scripts/apply.py base/presets/.editorconfig base/presets/pre-commit tests/test_tooling.py
 git commit -m "feat(apply): add scaffold-tooling subcommand and base .editorconfig/pre-commit presets"
 ```
 
@@ -182,8 +182,8 @@ git commit -m "feat(apply): add scaffold-tooling subcommand and base .editorconf
 ### Task 4: Fast Post-Edit `lint_rules` in `kit.json` & `base/hooks/format.py`
 
 **Files:**
-- Modify: `skills/claude-kit/scripts/apply.py:1057-1095` (`write_kit_json`)
-- Modify: `base/hooks/format.py:1-79` (bump `# claude-kit-hook-version: 4`)
+- Modify: `skills/claude-devkit/scripts/apply.py:1057-1095` (`write_kit_json`)
+- Modify: `base/hooks/format.py:1-79` (bump `# claude-devkit-hook-version: 4`)
 - Modify: `VERSION` (bump minor e.g. `1.7.0` -> `1.8.0`)
 - Test: `tests/test_hooks.py`, `tests/test_tooling.py`
 
@@ -208,7 +208,7 @@ Expected: FAIL (`lint_rules` not written to `kit.json` and ignored by `format.py
 
 - In `apply.py` (`effective_profile` + `write_kit_json`): collect active `lint_rules` from each active profile's `tooling` items (or `keep_existing` alternative if it defines `post_edit_check`, omitting `"skip"` or `only_when_installed` when absent) and store `"lint_rules": lint_rules` in `.claude/kit.json`.
 - In `base/hooks/format.py`:
-  - Bump `# claude-kit-hook-version: 4`.
+  - Bump `# claude-devkit-hook-version: 4`.
   - Extract a shared helper `_run_file_rules(rules, file_path, file_path_str, project, label, max_lines)` used for both `format_rules` (timeout 20s) and `lint_rules` (timeout 10s, truncating output to last 10 non-empty lines when non-zero).
   - Keep `sys.exit(0)` guaranteed.
 - Bump `VERSION` to `1.8.0`.
@@ -221,7 +221,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add skills/claude-kit/scripts/apply.py base/hooks/format.py VERSION tests/test_hooks.py tests/test_tooling.py
+git add skills/claude-devkit/scripts/apply.py base/hooks/format.py VERSION tests/test_hooks.py tests/test_tooling.py
 git commit -m "feat(hooks): run fast per-file lint_rules in format.py and emit them in kit.json"
 ```
 
@@ -267,7 +267,7 @@ For each profile, keep official documentation rules (checking current official d
 
 - [ ] **Step 4: Run `validate` and `tests` to verify pass**
 
-Run: `python skills/claude-kit/scripts/apply.py validate && python -m unittest discover -s tests -v`
+Run: `python skills/claude-devkit/scripts/apply.py validate && python -m unittest discover -s tests -v`
 Expected: `OK: validated 7 profile(s).` and all tests PASS.
 
 - [ ] **Step 5: Commit**
@@ -279,18 +279,18 @@ git commit -m "feat(profiles): add strict AI-guardrail linter and formatter pres
 
 ---
 
-### Task 6: Reusable `base/` AI Workflow Assets (`/review`, `code-reviewer`) & `/claude-kit` Skill Update
+### Task 6: Reusable `base/` AI Workflow Assets (`/review`, `code-reviewer`) & `/claude-devkit` Skill Update
 
 **Files:**
 - Create: `base/agents/code-reviewer.md`
 - Create: `base/skills/review/SKILL.md`
-- Modify: `skills/claude-kit/SKILL.md`
+- Modify: `skills/claude-devkit/SKILL.md`
 - Modify: `README.md`
 - Test: `tests/test_apply.py`
 
 **Interfaces:**
 - Consumes: Tasks 2, 3, 4, 5 (`audit` `missing_tooling`, `scaffold-tooling`, `--base-preset`, `lint_rules`).
-- Produces: `/review` skill + `code-reviewer` agent synced into target projects via `sync_extras`; complete `/claude-kit` guided workflow.
+- Produces: `/review` skill + `code-reviewer` agent synced into target projects via `sync_extras`; complete `/claude-devkit` guided workflow.
 
 - [ ] **Step 1: Write failing tests in `tests/test_apply.py`**
 
@@ -303,21 +303,21 @@ Add tests covering:
 Run: `python -m unittest tests.test_apply -v`
 Expected: FAIL (`code-reviewer.md` and `review/SKILL.md` do not exist yet).
 
-- [ ] **Step 3: Author `base/agents/code-reviewer.md`, `base/skills/review/SKILL.md`, and update `skills/claude-kit/SKILL.md` + `README.md`**
+- [ ] **Step 3: Author `base/agents/code-reviewer.md`, `base/skills/review/SKILL.md`, and update `skills/claude-devkit/SKILL.md` + `README.md`**
 
 - `base/agents/code-reviewer.md`: concise isolated reviewer prompt (inspect `git diff`, verify `CLAUDE.md` invariants, test coverage, boundary validation, error handling, security; explicitly skip formatting/linting handled by deterministic hooks; classify findings Critical / Important / Minor).
 - `base/skills/review/SKILL.md`: `/review` command (`disable-model-invocation: true`) that gathers `git status -sb` + `git diff`, delegates to `code-reviewer` (or runs the checklist inline if subagents unavailable), and outputs actionable findings before `/commit`.
-- `skills/claude-kit/SKILL.md`: update Steps 1b, 3b (add missing-tooling + `.editorconfig` + `.githooks/pre-commit` guided setup *before* `apply.py apply`, skipped in `local` mode, explicitly allowing approved manifest snippet merges + package install + `git config core.hooksPath .githooks`), and Step 6 (mention `/review`).
+- `skills/claude-devkit/SKILL.md`: update Steps 1b, 3b (add missing-tooling + `.editorconfig` + `.githooks/pre-commit` guided setup *before* `apply.py apply`, skipped in `local` mode, explicitly allowing approved manifest snippet merges + package install + `git config core.hooksPath .githooks`), and Step 6 (mention `/review`).
 - `README.md`: briefly document missing-tooling presets, `lint_rules` in `format.py`, `/review`, `.editorconfig`, and `.githooks/pre-commit`.
 
 - [ ] **Step 4: Run full test suite & validation**
 
-Run: `python -m unittest discover -s tests -v && python skills/claude-kit/scripts/apply.py validate`
+Run: `python -m unittest discover -s tests -v && python skills/claude-devkit/scripts/apply.py validate`
 Expected: All tests PASS and all 7 profiles validate `OK`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add base/agents/code-reviewer.md base/skills/review/SKILL.md skills/claude-kit/SKILL.md README.md tests/test_apply.py
+git add base/agents/code-reviewer.md base/skills/review/SKILL.md skills/claude-devkit/SKILL.md README.md tests/test_apply.py
 git commit -m "feat(base,skills): add /review workflow, code-reviewer agent, and guided preset setup"
 ```

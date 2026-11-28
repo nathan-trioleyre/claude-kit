@@ -1,5 +1,5 @@
 #!/bin/sh
-# claude-kit pre-commit hook: runs fast repo checks on staged changes without external hook runners.
+# claude-devkit pre-commit hook: runs fast repo checks on staged changes without external hook runners.
 set -e
 
 staged=$(git diff --cached --name-only --diff-filter=ACMR || true)

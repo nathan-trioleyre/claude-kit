@@ -16,7 +16,7 @@ Delete the files you don't need; an empty `org/` does nothing.
 
 `base/agents/`, `base/commands/`, `base/rules/`, and `base/skills/` work the exact same way for items shared across all projects regardless of company.
 
-Apply changes to projects with `/claude-kit` (initial setup) or `/claude-kit sync` (afterwards). Skip this layer with `--no-org`.
+Apply changes to projects with `/claude-devkit` (initial setup) or `/claude-devkit sync` (afterwards). Skip this layer with `--no-org`.
 
 ## Suggested MCP servers (opt-in)
 

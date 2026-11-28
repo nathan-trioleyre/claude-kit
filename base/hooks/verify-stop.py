@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Stop hook: runs the project's verify command before Claude finishes a turn.
-# claude-kit-hook-version: 4
+# claude-devkit-hook-version: 5
 
 Active by default whenever `.claude/kit.json` defines a non-empty `"verify_command"`
 and `"stop_verify"` is not explicitly `false` (opt-out). Exits immediately (0) otherwise.

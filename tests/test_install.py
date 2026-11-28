@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 KIT = Path(__file__).resolve().parent.parent
-SKILLS = ("claude-kit", "claude-kit-refresh", "claude-kit-learn")
+SKILLS = ("claude-devkit", "claude-devkit-refresh", "claude-devkit-learn")
 
 
 def install(claude_dir: Path, *extra: str) -> subprocess.CompletedProcess:
@@ -31,7 +31,7 @@ class TestInstall(unittest.TestCase):
                 self.assertFalse((skills_dir / name).is_symlink())
             self.assertTrue((skills_dir / "third-party" / "SKILL.md").is_file())
 
-            data = json.loads((claude_dir / "claude-kit.json").read_text(encoding="utf-8"))
+            data = json.loads((claude_dir / "claude-devkit.json").read_text(encoding="utf-8"))
             self.assertEqual(Path(data["kit_path"]), KIT)
             self.assertEqual(Path(data["python"]), Path(sys.executable))
 
@@ -42,13 +42,13 @@ class TestInstall(unittest.TestCase):
             install(claude_dir, "--link")  # second run must replace links cleanly
             for name in SKILLS:
                 self.assertTrue((claude_dir / "skills" / name / "SKILL.md").is_file(), name)
-            link = claude_dir / "skills" / "claude-kit"
+            link = claude_dir / "skills" / "claude-devkit"
             self.assertEqual((link / "SKILL.md").read_text(encoding="utf-8"),
-                             (KIT / "skills" / "claude-kit" / "SKILL.md").read_text(encoding="utf-8"))
+                             (KIT / "skills" / "claude-devkit" / "SKILL.md").read_text(encoding="utf-8"))
             # switching back to copy mode must not delete the kit's own skill files
             install(claude_dir)
-            self.assertTrue((KIT / "skills" / "claude-kit" / "SKILL.md").is_file())
-            self.assertFalse((claude_dir / "skills" / "claude-kit").is_symlink())
+            self.assertTrue((KIT / "skills" / "claude-devkit" / "SKILL.md").is_file())
+            self.assertFalse((claude_dir / "skills" / "claude-devkit").is_symlink())
 
     def test_uninstall_removes_only_kit_skills_and_config(self):
         for mode in ((), ("--link",)):
@@ -65,7 +65,7 @@ class TestInstall(unittest.TestCase):
                     self.assertFalse((skills_dir / name).exists(), name)
                     # removing a link must never delete the kit's own files
                     self.assertTrue((KIT / "skills" / name / "SKILL.md").is_file(), name)
-                self.assertFalse((claude_dir / "claude-kit.json").exists())
+                self.assertFalse((claude_dir / "claude-devkit.json").exists())
                 self.assertTrue((skills_dir / "third-party" / "SKILL.md").is_file())
 
                 install(claude_dir, "--uninstall")  # idempotent when nothing is installed

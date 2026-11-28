@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""Install claude-kit for your user (once per machine).
+"""Install claude-devkit for your user (once per machine).
 
 What it does:
-  1. installs the skills (/claude-kit, /claude-kit-refresh, /claude-kit-learn) into ~/.claude/skills/
-  2. writes ~/.claude/claude-kit.json with the path to this repository and the Python executable
+  1. installs the skills (/claude-devkit, /claude-devkit-refresh, /claude-devkit-learn) into ~/.claude/skills/
+  2. writes ~/.claude/claude-devkit.json with the path to this repository and the Python executable
 
 Two modes:
   default   copies the skills (re-run this script after editing a SKILL.md)
   --link    links the skills to this repository instead (symlink, or a junction on
             Windows): edits to SKILL.md files and apply.py are live, no reinstall needed.
 
-  --uninstall  removes the kit's skills and ~/.claude/claude-kit.json (other skills and
+  --uninstall  removes the kit's skills and ~/.claude/claude-devkit.json (other skills and
                configured projects are left alone; use `apply.py uninstall` per project).
 
 Why store the path? Stack profiles and scripts stay in THIS repository (the single
-source of truth). When /claude-kit learns a new stack, it saves the profile here,
+source of truth). When /claude-devkit learns a new stack, it saves the profile here,
 in your Git repo.
 """
 import argparse
@@ -76,11 +76,11 @@ def uninstall(claude_dir: Path) -> None:
         if dest.exists() or dest.is_symlink():
             remove_path(dest)  # a link/junction is removed without touching this repository
             print(f"Removed skill: {dest}")
-    config = claude_dir / "claude-kit.json"
+    config = claude_dir / "claude-devkit.json"
     if config.is_file():
         config.unlink()
         print(f"Removed kit config: {config}")
-    print("\nDone. Projects configured with /claude-kit keep their files; "
+    print("\nDone. Projects configured with /claude-devkit keep their files; "
           "run `apply.py uninstall --project <path>` in each one first if you want them cleaned too.")
 
 
@@ -91,7 +91,7 @@ def main() -> None:
     parser.add_argument("--link", action="store_true",
                         help="link skills to this repository instead of copying them")
     parser.add_argument("--uninstall", action="store_true",
-                        help="remove the kit's skills and ~/.claude/claude-kit.json (projects are untouched)")
+                        help="remove the kit's skills and ~/.claude/claude-devkit.json (projects are untouched)")
     args = parser.parse_args()
 
     claude_dir = Path(args.claude_dir).expanduser()
@@ -117,13 +117,13 @@ def main() -> None:
         shutil.copytree(skill, dest, ignore=shutil.ignore_patterns("__pycache__"))
         print(f"Installed skill: {dest}")
 
-    config = claude_dir / "claude-kit.json"
+    config = claude_dir / "claude-devkit.json"
     config.write_text(
         json.dumps({"kit_path": str(KIT), "python": sys.executable}, indent=2) + "\n",
         encoding="utf-8",
     )
     print(f"Kit config saved: {config}")
-    print("\nDone. Open Claude Code in a project and type /claude-kit")
+    print("\nDone. Open Claude Code in a project and type /claude-devkit")
 
 
 if __name__ == "__main__":

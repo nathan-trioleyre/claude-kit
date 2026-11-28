@@ -128,10 +128,10 @@ class TestHookLauncher(unittest.TestCase):
             self.assertEqual(r.returncode, 2, r.stderr)
             self.assertIn("BLOCKED:", r.stderr)
 
-            # 2. Empty PATH + claude-kit.json fallback: still finds python and runs guard.py
+            # 2. Empty PATH + claude-devkit.json fallback: still finds python and runs guard.py
             home = t / "home"
             (home / ".claude").mkdir(parents=True)
-            (home / ".claude" / "claude-kit.json").write_text(
+            (home / ".claude" / "claude-devkit.json").write_text(
                 json.dumps({"kit_path": str(KIT), "python": sys.executable}),
                 encoding="utf-8",
             )
@@ -388,7 +388,7 @@ class TestGuardHook(unittest.TestCase):
     def test_hook_files_carry_a_version_marker(self):
         for name in ("guard.py", "format.py", "session-check.py", "verify-stop.py", "run-hook.sh"):
             text = (KIT / "base" / "hooks" / name).read_text(encoding="utf-8")
-            self.assertIn("claude-kit-hook-version:", text, name)
+            self.assertIn("claude-devkit-hook-version:", text, name)
 
 
 class TestFormatHook(unittest.TestCase):

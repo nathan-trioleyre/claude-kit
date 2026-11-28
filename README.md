@@ -1,10 +1,10 @@
-# claude-kit
+# claude-devkit
 
-A personal kit that prepares Claude Code for any project (Python, C#, Angular, TypeScript, Next.js, Docker, Rust, Java/Spring, Go, PHP, React/Vite, Vue, and any future stack) with a single command: `/claude-kit`.
+A personal kit that prepares Claude Code for any project (Python, C#, Angular, TypeScript, Next.js, Docker, Rust, Java/Spring, Go, PHP, React/Vite, Vue, and any future stack) with a single command: `/claude-devkit`.
 
 ## The 30-second overview
 
-When you land on a project, `/claude-kit`:
+When you land on a project, `/claude-devkit`:
 
 1. **inspects** the project to understand its stack;
 2. **checks** `profiles/` to see if the stack (and its detected major version in `versions/`) is already known;
@@ -16,17 +16,17 @@ Afterwards, the kit keeps projects aligned:
 
 | Command | What it does |
 |---|---|
-| `/claude-kit` | Initial setup (or full re-run) of a project |
-| `/claude-kit local` | **Personal, invisible** setup for shared team repos (`CLAUDE.local.md`, `.claude/settings.local.json`, `.git/info/exclude` — never touches `.gitignore`, team `CLAUDE.md`, or team `settings.json`) |
-| `/claude-kit doctor` | Reports drift: outdated hooks, missing permissions, stale profiles, new stacks, unfilled `CLAUDE.md` sections, unresolved tooling conflicts |
-| `/claude-kit sync` | Refreshes only kit-managed files (settings, hooks, agents/commands/rules/skills, `.mcp.json`); never touches `CLAUDE.md` |
-| `/claude-kit uninstall` | Removes unmodified kit-managed files, kit hooks, kit-added permissions, ignore lines and `kit.json` (`apply.py uninstall --project . [--dry-run]`); `CLAUDE.md`, `CLAUDE.local.md` and rules are left for manual review |
-| `/claude-kit-refresh [stack\|all]` | Re-reads official sources for a profile and proposes updates |
-| `/claude-kit-learn` | Promotes durable lessons from a project's `CLAUDE.md` back into the kit (profile, `org/`, or `base/`) |
+| `/claude-devkit` | Initial setup (or full re-run) of a project |
+| `/claude-devkit local` | **Personal, invisible** setup for shared team repos (`CLAUDE.local.md`, `.claude/settings.local.json`, `.git/info/exclude` — never touches `.gitignore`, team `CLAUDE.md`, or team `settings.json`) |
+| `/claude-devkit doctor` | Reports drift: outdated hooks, missing permissions, stale profiles, new stacks, unfilled `CLAUDE.md` sections, unresolved tooling conflicts |
+| `/claude-devkit sync` | Refreshes only kit-managed files (settings, hooks, agents/commands/rules/skills, `.mcp.json`); never touches `CLAUDE.md` |
+| `/claude-devkit uninstall` | Removes unmodified kit-managed files, kit hooks, kit-added permissions, ignore lines and `kit.json` (`apply.py uninstall --project . [--dry-run]`); `CLAUDE.md`, `CLAUDE.local.md` and rules are left for manual review |
+| `/claude-devkit-refresh [stack\|all]` | Re-reads official sources for a profile and proposes updates |
+| `/claude-devkit-learn` | Promotes durable lessons from a project's `CLAUDE.md` back into the kit (profile, `org/`, or `base/`) |
 
 ## Projects with an existing setup
 
-On a project that already has its own `CLAUDE.md`, hooks, formatter, linter, or package manager, `/claude-kit` never overrides anything silently:
+On a project that already has its own `CLAUDE.md`, hooks, formatter, linter, or package manager, `/claude-devkit` never overrides anything silently:
 
 1. `apply.py audit` inventories what exists and lists **conflicts** between the project's tools and the profile's preferred tools (e.g., `black` in `pyproject.toml` vs the kit's `ruff`, `pnpm-lock.yaml` vs `npm`, or a hand-made formatting hook).
 2. For each conflict, you choose one by one: **keep existing** (the kit withholds overlapping commands, permissions, format rules, and practice lines, and uses the existing tool's equivalents), **adopt kit** (Claude proposes a migration plan: old config/hooks to remove, one-time reformat; nothing is touched before your approval), or **keep both**.
@@ -46,7 +46,7 @@ In each configured project, the kit sets up these Claude Code building blocks:
 2. **`.claude/rules/*.md`**: modular rules scoped by `paths` (monorepos, `base/rules/`, `org/rules/`).
 3. **`.claude/skills/`** (and `commands/`): optional on-demand workflows from `base/` (`/commit`, `/handoff`, `/review`) or `org/`.
 4. **`.claude/agents/` & `.claude/codemap.md`**: isolated subagents from `base/` (`code-reviewer`) or `org/`, plus a compact auto-generated project codemap to save exploration tokens.
-5. **Hooks (`.claude/settings.json`) & Observability**: deterministic guardrails (`SessionStart` with `session-check.py` including `~/.npmrc` supply-chain checks, `PreToolUse` with `guard.py`, `PostToolUse` with `format.py` running `lint_rules` then `format_rules`, and `Stop` with `verify-stop.py` active by default whenever `verify_command` is set — opt-out via `"stop_verify": false` in `.claude/kit.json`). Hook blocks and session token/cost usage are logged to `.claude/logs/` and summarized via `apply.py stats` (and `doctor` / `/claude-kit-learn`). Also optional CI (`--base-preset ci`: `.github/workflows/ci.yml` or `.gitlab-ci.yml`, picked from the `origin` remote) and `.githooks/pre-commit` (with `gitleaks` if installed).
+5. **Hooks (`.claude/settings.json`) & Observability**: deterministic guardrails (`SessionStart` with `session-check.py` including `~/.npmrc` supply-chain checks, `PreToolUse` with `guard.py`, `PostToolUse` with `format.py` running `lint_rules` then `format_rules`, and `Stop` with `verify-stop.py` active by default whenever `verify_command` is set — opt-out via `"stop_verify": false` in `.claude/kit.json`). Hook blocks and session token/cost usage are logged to `.claude/logs/` and summarized via `apply.py stats` (and `doctor` / `/claude-devkit-learn`). Also optional CI (`--base-preset ci`: `.github/workflows/ci.yml` or `.gitlab-ci.yml`, picked from the `origin` remote) and `.githooks/pre-commit` (with `gitleaks` if installed).
 
 ## Division of labor
 
@@ -63,20 +63,20 @@ Core rule: **what must stay identical every time is code; what requires understa
 ## Installation (once per machine)
 
 ```bash
-git clone https://github.com/nathan-trioleyre/claude-kit.git
-cd claude-kit
+git clone https://github.com/nathan-trioleyre/claude-devkit.git
+cd claude-devkit
 python install.py --link     # links skills: edits in this repo take effect live
 ```
 
 `--link` creates a symlink (a junction on Windows). Without it, skills are copied and you need to re-run `python install.py` after editing a `SKILL.md`.
-Then, in any project: open Claude Code and type `/claude-kit`.
+Then, in any project: open Claude Code and type `/claude-devkit`.
 
-To remove the kit from your machine: `python install.py --uninstall` (removes the kit's skills, links only, never this repository's files, and `~/.claude/claude-kit.json`). Configured projects keep their files: clean each one first with `/claude-kit uninstall` (or `apply.py uninstall --project <path>`).
+To remove the kit from your machine: `python install.py --uninstall` (removes the kit's skills, links only, never this repository's files, and `~/.claude/claude-devkit.json`). Configured projects keep their files: clean each one first with `/claude-devkit uninstall` (or `apply.py uninstall --project <path>`).
 
 ## Repository layout
 
 ```text
-claude-kit/
+claude-devkit/
 ├── VERSION                     kit version (recorded in each project's kit.json)
 ├── install.py                  installs skills (copy or --link) + records kit and Python paths
 ├── base/                       shared across ALL projects
@@ -92,15 +92,15 @@ claude-kit/
 │   │   java-spring/ go/ php/ react-vite/ vue/   built-in profiles
 │   └── _TEMPLATE/              template for writing a profile by hand
 ├── skills/
-│   ├── claude-kit/             /claude-kit (+ scripts/apply.py thin CLI, logic in scripts/kitlib/, incl. doctor and audit modules)
-│   ├── claude-kit-refresh/     /claude-kit-refresh
-│   └── claude-kit-learn/       /claude-kit-learn
+│   ├── claude-devkit/             /claude-devkit (+ scripts/apply.py thin CLI, logic in scripts/kitlib/, incl. doctor and audit modules)
+│   ├── claude-devkit-refresh/     /claude-devkit-refresh
+│   └── claude-devkit-learn/       /claude-devkit-learn
 └── tests/                      dependency-free unittest suite
 ```
 
 ### Profile freshness
 
-Any profile whose `last_verified` is older than 90 days is flagged as `stale` by `doctor` and `apply`. Run `/claude-kit-refresh [stack|all]` to re-read official sources, review changes, and update the verification date after your approval.
+Any profile whose `last_verified` is older than 90 days is flagged as `stale` by `doctor` and `apply`. Run `/claude-devkit-refresh [stack|all]` to re-read official sources, review changes, and update the verification date after your approval.
 
 ## What the script never does
 
@@ -125,13 +125,13 @@ Profiles are *rewritten* in this repository (and refreshed here). A plugin insta
 ## Evolving the kit
 
 - A rule useful in all your projects → `base/`; across your company → `org/`; specific to one stack → its profile.
-- Validate profiles → `python skills/claude-kit/scripts/apply.py validate`.
+- Validate profiles → `python skills/claude-devkit/scripts/apply.py validate`.
 - Run tests → `python -m unittest discover -s tests -v`.
-- Bump `VERSION` when modifying `base/` so `doctor` flags projects to resync; bump a hook's `claude-kit-hook-version` marker when modifying a hook.
+- Bump `VERSION` when modifying `base/` so `doctor` flags projects to resync; bump a hook's `claude-devkit-hook-version` marker when modifying a hook.
 - Commit changes in `profiles/` and `org/`: they are the memory of your stacks and company conventions.
 
 ## First-run checklist
 
-1. **Skills appear**: in Claude Code, type `/` and look for `claude-kit`. Otherwise check `~/.claude/skills/`.
-2. **Hooks work across platforms**: hooks invoke `.claude/hooks/run-hook.sh`, which searches `PATH` for a working `python3`/`python` (skipping broken Windows Store stubs), falls back to the interpreter saved in `~/.claude/claude-kit.json`, then tries `py -3`. Run `/hooks` to verify registration, then ask Claude to run `git push --force`: it must be blocked.
-3. **Hooks load at startup**: after running `/claude-kit`, restart the session.
+1. **Skills appear**: in Claude Code, type `/` and look for `claude-devkit`. Otherwise check `~/.claude/skills/`.
+2. **Hooks work across platforms**: hooks invoke `.claude/hooks/run-hook.sh`, which searches `PATH` for a working `python3`/`python` (skipping broken Windows Store stubs), falls back to the interpreter saved in `~/.claude/claude-devkit.json`, then tries `py -3`. Run `/hooks` to verify registration, then ask Claude to run `git push --force`: it must be blocked.
+3. **Hooks load at startup**: after running `/claude-devkit`, restart the session.
